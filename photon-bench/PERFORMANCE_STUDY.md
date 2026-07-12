@@ -1,6 +1,6 @@
 # Photon Pub/Sub Performance Across Storage Adapters and Deployment Topologies
 
-Pre-registered workloads and runner commands: [`EXPERIMENTS.md`](EXPERIMENTS.md). Adapter contract: [docs.rs `photon` architecture](https://docs.rs/photon/latest/photon/#architecture).
+Pre-registered workloads and runner commands: [`EXPERIMENTS.md`](EXPERIMENTS.md). Adapter contract: [docs.rs `photon` architecture](https://docs.rs/uf-photon/latest/photon/#architecture).
 
 ---
 
@@ -163,7 +163,7 @@ Payloads are encrypted before append. **`get_event`** is supported on `mem` and 
 
 Bench CLI: `--storage mem|sqlite|nats|fluvio|kafka`.
 
-Subject / topic naming is adapter-specific (`photon.{topic}` / `photon-s.{shard}.{topic}` for NATS; analogous sharded names for Kafka/Fluvio). See [docs.rs `photon` architecture](https://docs.rs/photon/latest/photon/#architecture) and [`photon-backend-nats`](../photon-backend-nats/) topic mapping.
+Subject / topic naming is adapter-specific (`photon.{topic}` / `photon-s.{shard}.{topic}` for NATS; analogous sharded names for Kafka/Fluvio). See [docs.rs `photon` architecture](https://docs.rs/uf-photon/latest/photon/#architecture) and [`photon-backend-nats`](../photon-backend-nats/) topic mapping.
 
 ### 2.3 Backend capabilities
 
@@ -502,9 +502,9 @@ Harness: `infra/aws/sqlite-smoke/scripts/run-remote-criterion.sh` on `aws-t3-med
 ## Appendix — References
 
 - [`EXPERIMENTS.md`](EXPERIMENTS.md) — experiment registry and runner commands
-- [docs.rs `photon` architecture](https://docs.rs/photon/latest/photon/#architecture) — adapter contract and sharding
+- [docs.rs `photon` architecture](https://docs.rs/uf-photon/latest/photon/#architecture) — adapter contract and sharding
 - [`infra/aws/broker-fleet/README.md`](../infra/aws/broker-fleet/README.md) — NATS AWS campaign automation
 - [`infra/aws/kafka-fleet/README.md`](../infra/aws/kafka-fleet/README.md) — Kafka PFH campaigns
 - [`infra/aws/fluvio-fleet/README.md`](../infra/aws/fluvio-fleet/README.md) — Fluvio PFH campaigns
-- [docs.rs `photon::config`](https://docs.rs/photon/latest/photon/config/) — builder and env vars
-- `cargo doc -p photon --features runtime,mem` — API reference
+- [docs.rs `photon::config`](https://docs.rs/uf-photon/latest/photon/config/) — builder and env vars
+- `cargo doc -p uf-photon --features runtime,mem` — API reference

@@ -1,25 +1,29 @@
 [package]
-name = "photon"
+name = "uf-photon"
 version = "0.1.0"
 edition = "2021"
 description = "Pub/sub event pipeline facade — composable storage adapters"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation.workspace = true
+documentation = "https://docs.rs/uf-photon"
+readme = "README.md"
 keywords.workspace = true
 categories.workspace = true
 
+[lib]
+name = "photon"
+
 [dependencies]
-photon-macros = { path = "../photon-macros" }
-photon-core = { path = "../photon-core" }
-photon-telemetry = { path = "../photon-telemetry" }
-photon-backend = { path = "../photon-backend", default-features = false, optional = true }
-photon-runtime = { path = "../photon-runtime", default-features = false, optional = true }
-photon-backend-nats = { path = "../photon-backend-nats", optional = true }
-photon-backend-kafka = { path = "../photon-backend-kafka", optional = true }
-photon-backend-fluvio = { path = "../photon-backend-fluvio", optional = true }
-photon-backend-sqlite = { path = "../photon-backend-sqlite", optional = true }
+photon-macros = { workspace = true }
+photon-core = { workspace = true }
+photon-telemetry = { workspace = true }
+photon-backend = { workspace = true, optional = true }
+photon-runtime = { workspace = true, optional = true }
+photon-backend-nats = { workspace = true, optional = true }
+photon-backend-kafka = { workspace = true, optional = true }
+photon-backend-fluvio = { workspace = true, optional = true }
+photon-backend-sqlite = { workspace = true, optional = true }
 quark = { workspace = true }
 
 [features]
@@ -38,8 +42,8 @@ runtime = [
 ]
 
 [dev-dependencies]
-photon-backend = { path = "../photon-backend", default-features = false, features = ["mem", "runtime"] }
-photon-runtime = { path = "../photon-runtime", default-features = false, features = ["mem", "runtime"] }
+photon-backend = { workspace = true, features = ["mem", "runtime"] }
+photon-runtime = { workspace = true, features = ["mem", "runtime"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 anyhow = { workspace = true }
 tracing = { workspace = true }

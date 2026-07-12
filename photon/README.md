@@ -2,6 +2,14 @@
 
 Feature flags, wiring, and verify commands for adding Photon to a Rust service. Project overview: [README](../README.md).
 
+## Install
+
+crates.io package **`uf-photon`** (Rust crate name remains `photon`):
+
+```toml
+photon = { package = "uf-photon", version = "0.1.0", features = ["runtime", "mem"] }
+```
+
 ## Features
 
 | Feature | Purpose |
@@ -13,7 +21,7 @@ Feature flags, wiring, and verify commands for adding Photon to a Rust service. 
 | `fluvio` | Fluvio storage adapter ([`photon-backend-fluvio`](../photon-backend-fluvio/)) |
 | `kafka` | Kafka storage adapter ([`photon-backend-kafka`](../photon-backend-kafka/)) |
 
-Configuration reference: [docs.rs `photon::config`](https://docs.rs/photon/latest/photon/config/). Architecture: [docs.rs `photon`](https://docs.rs/photon/latest/photon/#architecture).
+Configuration reference: [docs.rs `photon::config`](https://docs.rs/uf-photon/latest/photon/config/). Architecture: [docs.rs `photon`](https://docs.rs/uf-photon/latest/photon/#architecture).
 
 Ships with **no default features** (`default = []`). Enable `runtime` + `mem` for the standard evaluation path.
 
@@ -22,7 +30,7 @@ Ships with **no default features** (`default = []`). Enable `runtime` + `mem` fo
 1. Build with `Photon::builder()` — default installs `InProcStoragePort` (`mem`). Requires `PHOTON_TRANSPORT_KEY` (`TransportCrypto::from_env`).
 2. Optionally pass `.storage_port(Arc<dyn StoragePort>)` for `sqlite` or broker adapters.
 3. Call `.auto_registry()` when using `#[photon::topic]` / `#[photon::subscribe]`.
-4. Keep the [`Photon`](https://docs.rs/photon/latest/photon/struct.Photon.html) handle and call `publish_on(&photon)` / `subscribe_on(&photon, opts)` (preferred).
+4. Keep the [`Photon`](https://docs.rs/uf-photon/latest/photon/struct.Photon.html) handle and call `publish_on(&photon)` / `subscribe_on(&photon, opts)` (preferred).
 5. Optional: `photon::configure(photon)` for process-wide `.publish()` / `.subscribe()` sugar.
 6. Call `photon.start_executor(identity)` when using `#[photon::subscribe]` handlers.
 
@@ -53,7 +61,7 @@ let photon = Photon::builder()
     .build()?;
 ```
 
-Broker env vars and builder options: each adapter's `*StoragePortBuilder` rustdoc (linked from [`photon::config`](https://docs.rs/photon/latest/photon/config/#storage-adapter-builders)).
+Broker env vars and builder options: each adapter's `*StoragePortBuilder` rustdoc (linked from [`photon::config`](https://docs.rs/uf-photon/latest/photon/config/#storage-adapter-builders)).
 
 ### SQLite — durable single-process
 
@@ -131,9 +139,9 @@ Prefer AWS when local cargo is unavailable: `../infra/aws/sqlite-smoke/scripts/r
 
 ```bash
 export PHOTON_TRANSPORT_KEY=cGhvdG9uLWRldi10cmFuc3BvcnQta2V5LTMyYnl0ZXM=
-cargo check -p photon --features runtime,mem
-cargo run -p photon --example embedded_mem --features runtime,mem
-cargo test -p photon --doc --features runtime,mem
+cargo check -p uf-photon --features runtime,mem
+cargo run -p uf-photon --example embedded_mem --features runtime,mem
+cargo test -p uf-photon --doc --features runtime,mem
 ```
 
 Full matrix: [root README § Verify](../README.md#verify). Macro expansion: [`docs/macro-expansion.md`](../docs/macro-expansion.md).

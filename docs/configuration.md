@@ -1,6 +1,6 @@
 # Photon configuration reference
 
-> Canonical index: [docs.rs `photon::config`](https://docs.rs/photon/latest/photon/config/). Edit this file; content is included into rustdoc via `photon/src/config.rs`.
+> Canonical index: [docs.rs `photon::config`](https://docs.rs/uf-photon/latest/photon/config/). Edit this file; content is included into rustdoc via `photon/src/config.rs`.
 
 Central index for compile-time options, cross-cutting environment variables, and macro attributes.
 **Adapter-specific builder options live on each storage builder type** — this page links there instead of duplicating tables.
@@ -16,9 +16,9 @@ Central index for compile-time options, cross-cutting environment variables, and
 | Environment variables | Process startup | Builder fallbacks, retention defaults, telemetry |
 | CLI (`photon-bench`) | Bench/e2e only | Matrix dimensions, hardware labels |
 
-**Retention:** [`PhotonBuilder::retention_policy`](https://docs.rs/photon/latest/photon/struct.PhotonBuilder.html#method.retention_policy) → unset fields fall back to env → hardcoded defaults in `photon-backend/src/retention/config.rs`.
+**Retention:** [`PhotonBuilder::retention_policy`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html#method.retention_policy) → unset fields fall back to env → hardcoded defaults in `photon-backend/src/retention/config.rs`.
 
-**Telemetry:** [`PhotonBuilder::ops_log`](https://docs.rs/photon/latest/photon/struct.PhotonBuilder.html#method.ops_log) installs at build time; otherwise `PHOTON_TELEMETRY` (see `photon-telemetry/src/global.rs`) applies when ops log is resolved from env.
+**Telemetry:** [`PhotonBuilder::ops_log`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html#method.ops_log) installs at build time; otherwise `PHOTON_TELEMETRY` (see `photon-telemetry/src/global.rs`) applies when ops log is resolved from env.
 
 **Envelope crypto:** `TransportCrypto::from_env()` requires `PHOTON_TRANSPORT_KEY` (fail-closed). Development-only fallback via `from_env_or_dev_default()` needs `PHOTON_ALLOW_DEV_TRANSPORT_KEY=1`.
 
@@ -49,11 +49,11 @@ Default: **none** — enable `runtime` + `mem` explicitly for evaluation.
 
 ---
 
-## Host boot — [`PhotonBuilder`](https://docs.rs/photon/latest/photon/struct.PhotonBuilder.html)
+## Host boot — [`PhotonBuilder`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html)
 
-Methods, examples, and wiring checklist: **see [`PhotonBuilder` rustdoc](https://docs.rs/photon/latest/photon/struct.PhotonBuilder.html)**.
+Methods, examples, and wiring checklist: **see [`PhotonBuilder` rustdoc](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html)**.
 
-Runnable host boot: `cargo run -p photon --example embedded_mem --features runtime,mem`.
+Runnable host boot: `cargo run -p uf-photon --example embedded_mem --features runtime,mem`.
 
 ---
 
@@ -69,7 +69,7 @@ Broker connection, replay, sharding, and env fallbacks are documented **on each 
 | `SQLite` | — (`PHOTON_SQLITE_PATH`) | — | [`SqliteStoragePort`](../../photon_backend_sqlite/struct.SqliteStoragePort.html) |
 | In-process | — (default) | — | [`InProcStoragePort`](../../photon_backend/storage/struct.InProcStoragePort.html) |
 
-Install any port with [`PhotonBuilder::storage_port`](https://docs.rs/photon/latest/photon/struct.PhotonBuilder.html#method.storage_port). Broker adapters use `StoragePortBuilder::build().await`; `SQLite` uses [`SqliteStoragePort::open`](../../photon_backend_sqlite/struct.SqliteStoragePort.html) / [`from_env`](../../photon_backend_sqlite/struct.SqliteStoragePort.html#method.from_env).
+Install any port with [`PhotonBuilder::storage_port`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html#method.storage_port). Broker adapters use `StoragePortBuilder::build().await`; `SQLite` uses [`SqliteStoragePort::open`](../../photon_backend_sqlite/struct.SqliteStoragePort.html) / [`from_env`](../../photon_backend_sqlite/struct.SqliteStoragePort.html#method.from_env).
 
 ---
 
@@ -77,7 +77,7 @@ Install any port with [`PhotonBuilder::storage_port`](https://docs.rs/photon/lat
 
 ### `#[photon::topic]`
 
-Defined in `photon-macros/src/topic.rs`. Full usage: [`topic` macro rustdoc](https://docs.rs/photon/latest/photon/attr.topic.html).
+Defined in `photon-macros/src/topic.rs`. Full usage: [`topic` macro rustdoc](https://docs.rs/uf-photon/latest/photon/attr.topic.html).
 
 | Attribute | Required | Values | Purpose |
 |-----------|----------|--------|---------|
@@ -91,7 +91,7 @@ Defined in `photon-macros/src/topic.rs`. Full usage: [`topic` macro rustdoc](htt
 
 ### `#[photon::subscribe]`
 
-Defined in `photon-macros/src/subscribe.rs`. Full usage: [`subscribe` macro rustdoc](https://docs.rs/photon/latest/photon/attr.subscribe.html). Expansion notes: [`docs/macro-expansion.md`](macro-expansion.md).
+Defined in `photon-macros/src/subscribe.rs`. Full usage: [`subscribe` macro rustdoc](https://docs.rs/uf-photon/latest/photon/attr.subscribe.html). Expansion notes: [`docs/macro-expansion.md`](macro-expansion.md).
 
 | Attribute | Required | Values | Purpose |
 |-----------|----------|--------|---------|
@@ -102,13 +102,13 @@ Defined in `photon-macros/src/subscribe.rs`. Full usage: [`subscribe` macro rust
 
 **Handler parameters (v2):** first arg is an actor binding — `Box<dyn Actor>`, `Arc<dyn Actor>`, `Box<Concrete>`, or `Arc<Concrete>` (concrete types downcast via `Actor::into_any`; failure → `PhotonError::Identity`). Second arg is the typed payload. Optional trailing injectables: `&Event`, `HandlerCtx`.
 
-Architecture: repository `docs/adr/001-consumer-groups.md`. Runnable: `cargo run -p photon --example subscribe_v2 --features runtime,mem`.
+Architecture: repository `docs/adr/001-consumer-groups.md`. Runnable: `cargo run -p uf-photon --example subscribe_v2 --features runtime,mem`.
 
 ---
 
 ## Subscribe options
 
-[`SubscribeOpts`](../../photon_backend/models/subscribe_opts/struct.SubscribeOpts.html) and [`GroupOpts`](../../photon_backend/models/subscribe_opts/struct.GroupOpts.html) — examples on those types. Runnable: `cargo run -p photon --example keyed_topic --features runtime,mem`.
+[`SubscribeOpts`](../../photon_backend/models/subscribe_opts/struct.SubscribeOpts.html) and [`GroupOpts`](../../photon_backend/models/subscribe_opts/struct.GroupOpts.html) — examples on those types. Runnable: `cargo run -p uf-photon --example keyed_topic --features runtime,mem`.
 
 ---
 
@@ -191,7 +191,7 @@ CLI reference: `photon-bench/EXPERIMENTS.md`, `photon-bench/src/cli.rs`.
 
 | Document | Audience |
 |----------|----------|
-| `cargo doc -p photon --features runtime,mem --open` | **Primary** API + configuration (`photon::config`) |
+| `cargo doc -p uf-photon --features runtime,mem --open` | **Primary** API + configuration (`photon::config`) |
 | `README.md` | Landing, model, FAQ |
 | `photon/README.md` | Facade features and wiring checklist |
 | [`macro-expansion.md`](macro-expansion.md) | What `#[topic]` / `#[subscribe]` generate |

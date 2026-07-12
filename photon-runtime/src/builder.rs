@@ -108,7 +108,7 @@ impl PhotonBuilder {
     /// Discover `#[photon::topic]` descriptors via Quark inventory instead of an empty registry.
     ///
     /// Required when using `#[topic]` / `#[subscribe]` in the same crate graph as the host.
-    /// Runnable: `cargo run -p photon --example embedded_mem --features runtime,mem`.
+    /// Runnable: `cargo run -p uf-photon --example embedded_mem --features runtime,mem`.
     #[must_use]
     pub const fn auto_registry(mut self) -> Self {
         self.use_auto_registry = true;

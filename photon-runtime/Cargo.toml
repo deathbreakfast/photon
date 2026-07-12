@@ -6,15 +6,15 @@ description = "Photon runtime builder and process-wide configuration"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation.workspace = true
+documentation = "https://docs.rs/photon-runtime"
+readme = "README.md"
 keywords.workspace = true
 categories.workspace = true
-publish = false
 
 [dependencies]
-photon-core = { path = "../photon-core" }
-photon-backend = { path = "../photon-backend", default-features = false }
-photon-telemetry = { path = "../photon-telemetry" }
+photon-core = { workspace = true }
+photon-backend = { workspace = true }
+photon-telemetry = { workspace = true }
 futures = { version = "0.3", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -37,6 +37,9 @@ mem = ["photon-backend/mem", "runtime"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[package.metadata.docs.rs]
+all-features = true
 
 [lints]
 workspace = true

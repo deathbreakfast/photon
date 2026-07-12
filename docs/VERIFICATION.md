@@ -23,20 +23,20 @@ cargo check --workspace --features runtime,mem
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 
 # Facade-only docs (quick check)
-RUSTDOCFLAGS="-D warnings" cargo doc -p photon --features runtime,mem --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc -p uf-photon --features runtime,mem --no-deps
 
 # Doctests (rust,no_run compile-checked)
-cargo test -p photon --doc --features runtime,mem
+cargo test -p uf-photon --doc --features runtime,mem
 cargo test -p photon-runtime --doc --features runtime,mem
 cargo test -p photon-macros --doc
 cargo test -p photon-backend --doc --features runtime
 
 # Examples on the facade (need PHOTON_TRANSPORT_KEY — smoke scripts export it)
-cargo run -p photon --example embedded_mem --features runtime,mem
-cargo run -p photon --example consumer_group --features runtime,mem
-cargo run -p photon --example manual_subscribe --features runtime,mem
-cargo run -p photon --example keyed_topic --features runtime,mem
-cargo run -p photon --example telemetry_ops_log --features runtime,mem
+cargo run -p uf-photon --example embedded_mem --features runtime,mem
+cargo run -p uf-photon --example consumer_group --features runtime,mem
+cargo run -p uf-photon --example manual_subscribe --features runtime,mem
+cargo run -p uf-photon --example keyed_topic --features runtime,mem
+cargo run -p uf-photon --example telemetry_ops_log --features runtime,mem
 
 # Integration
 cargo test -p photon-e2e
@@ -81,6 +81,6 @@ Download `coverage-lcov` from the GitHub Actions run artifacts for the CI report
 - Lane map on facade: **Creating topics** / **Integrating the host** / **Developing the backend**
 - Config reference: `photon::config` includes `docs/configuration.md`
 - Macro expansion: `docs/macro-expansion.md`
-- Examples: `photon/examples/` via `[[example]]` (`cargo run -p photon --example …`)
+- Examples: `photon/examples/` via `[[example]]` (`cargo run -p uf-photon --example …`)
 - Trait `# Contract` sections on [`StoragePort`](photon-backend/src/storage/port.rs) and [`PhotonBackend`](photon-backend/src/backend/photon_backend.rs)
 - Adapter builder options live on each `*StoragePortBuilder` rustdoc; `photon::config` indexes and links there (no duplicated env tables)

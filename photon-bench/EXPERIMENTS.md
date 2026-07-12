@@ -2,7 +2,7 @@
 
 Pre-registered experiment IDs, dimension matrix, results log, and runner commands.
 
-**Methodology:** [`PERFORMANCE_STUDY.md`](PERFORMANCE_STUDY.md). Adapter contract: [docs.rs `photon` architecture](https://docs.rs/photon/latest/photon/#architecture).
+**Methodology:** [`PERFORMANCE_STUDY.md`](PERFORMANCE_STUDY.md). Adapter contract: [docs.rs `photon` architecture](https://docs.rs/uf-photon/latest/photon/#architecture).
 
 ---
 

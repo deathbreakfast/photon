@@ -6,13 +6,13 @@ description = "NATS JetStream storage adapter for Photon"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation.workspace = true
+documentation = "https://docs.rs/photon-backend-nats"
+readme = "README.md"
 keywords.workspace = true
 categories.workspace = true
-publish = false
 
 [dependencies]
-photon-backend = { path = "../photon-backend", default-features = false, features = ["runtime"] }
+photon-backend = { workspace = true, features = ["runtime"] }
 async-trait = { workspace = true }
 async-stream = { workspace = true }
 bytes = "1"
@@ -31,6 +31,9 @@ futures = "0.3"
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 uuid = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
 
 [lints]
 workspace = true

@@ -1,6 +1,6 @@
 //! Manual subscribe stream — **Creating topics** without `#[subscribe]`.
 //!
-//! Run: `cargo run -p photon --example manual_subscribe --features runtime,mem`
+//! Run: `cargo run -p uf-photon --example manual_subscribe --features runtime,mem`
 //!
 //! Requires `PHOTON_TRANSPORT_KEY` (see `docs/configuration.md`).
 #![allow(missing_docs)]

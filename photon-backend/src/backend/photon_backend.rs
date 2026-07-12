@@ -1,7 +1,7 @@
 //! Object-safe backend trait for Photon publish/subscribe runtimes.
 //!
 //! Implement this trait and install via
-//! [`PhotonBuilder::backend_with_context`](https://docs.rs/photon/latest/photon/struct.PhotonBuilder.html#method.backend_with_context).
+//! [`PhotonBuilder::backend_with_context`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html#method.backend_with_context).
 //!
 //! See also: [`crate::storage::StoragePort`], [`crate::GenericPhotonBackend`].
 

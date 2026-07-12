@@ -6,14 +6,14 @@ description = "Photon publish/subscribe backend implementations and storage adap
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation.workspace = true
+documentation = "https://docs.rs/photon-backend"
+readme = "README.md"
 keywords.workspace = true
 categories.workspace = true
-publish = false
 
 [dependencies]
-photon-core = { path = "../photon-core" }
-photon-telemetry = { path = "../photon-telemetry" }
+photon-core = { workspace = true }
+photon-telemetry = { workspace = true }
 quark = { workspace = true }
 tokio = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
@@ -52,8 +52,6 @@ mem = ["runtime"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
-photon = { path = "../photon", features = ["runtime", "mem"] }
-photon-testkit = { path = "../photon-testkit" }
 futures = "0.3"
 serde_json = { workspace = true }
 serial_test = "3"
@@ -73,6 +71,9 @@ required-features = ["runtime"]
 name = "dispatch_stub"
 harness = false
 required-features = ["runtime"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [lints]
 workspace = true

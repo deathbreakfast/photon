@@ -16,4 +16,4 @@ Durable single-process: [`photon-backend-sqlite`](../photon-backend-sqlite/).
 - **Implement `StoragePort` / `PhotonBackend`** — custom adapters; install via `BackendContext`
 - **Wire a storage port** — pass `Arc<dyn StoragePort>` to [`PhotonBuilder::storage_port`](../photon-runtime/src/builder.rs) (see [`photon-runtime`](../photon-runtime/))
 
-API reference: `cargo doc -p photon --features runtime,mem --open` → [Developing the backend](https://docs.rs/photon/latest/photon/index.html#developing-the-backend).
+API reference: `cargo doc -p uf-photon --features runtime,mem --open` → [Developing the backend](https://docs.rs/uf-photon/latest/photon/index.html#developing-the-backend).

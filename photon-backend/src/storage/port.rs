@@ -5,7 +5,7 @@
 //! **Adapter authors** implement [`StoragePort`] in a storage crate and wire it at boot.
 //!
 //! Reference in-process implementation: [`InProcStoragePort`]. Runnable host example:
-//! `cargo run -p photon --example embedded_mem --features runtime,mem`.
+//! `cargo run -p uf-photon --example embedded_mem --features runtime,mem`.
 //!
 //! See also: [`crate::checkpoint`], [`crate::retention`], [`crate::backend`].
 
@@ -90,8 +90,8 @@ impl StorageCapabilities {
 /// # }
 /// ```
 ///
-/// Install at boot via the facade [`PhotonBuilder`](https://docs.rs/photon/latest/photon/struct.PhotonBuilder.html).
-/// Host walkthrough: [Integrating the host](https://docs.rs/photon/latest/photon/#integrating-the-host).
+/// Install at boot via the facade [`PhotonBuilder`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html).
+/// Host walkthrough: [Integrating the host](https://docs.rs/uf-photon/latest/photon/#integrating-the-host).
 #[async_trait]
 pub trait StoragePort: Send + Sync {
     /// Adapter capabilities for contract tests and telemetry.

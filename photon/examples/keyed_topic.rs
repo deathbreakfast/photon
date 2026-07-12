@@ -1,6 +1,6 @@
 //! Keyed topic with partition filter — **Creating topics**.
 //!
-//! Run: `cargo run -p photon --example keyed_topic --features runtime,mem`
+//! Run: `cargo run -p uf-photon --example keyed_topic --features runtime,mem`
 //!
 //! Requires `PHOTON_TRANSPORT_KEY` (see `docs/configuration.md`).
 #![allow(missing_docs)]

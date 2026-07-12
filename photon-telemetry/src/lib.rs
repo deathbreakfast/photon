@@ -1,7 +1,7 @@
 //! Operations telemetry port for Photon.
 //!
 //! Hosts install a process-wide [`OpsLog`] via [`install_ops_log`] or
-//! [`PhotonBuilder::ops_log`](https://docs.rs/photon/latest/photon/struct.PhotonBuilder.html#method.ops_log).
+//! [`PhotonBuilder::ops_log`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html#method.ops_log).
 //! Backend instrumentation (publish counters, DLQ rows, checkpoint failures) calls [`ops_log`].
 //!
 //! ## Entry points

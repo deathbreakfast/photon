@@ -20,7 +20,6 @@ members = [
 license = "MIT"
 repository = "https://github.com/unified-field-dev/photon"
 homepage = "https://github.com/unified-field-dev/photon"
-documentation = "https://docs.rs/photon"
 keywords = ["pubsub", "events", "async", "messaging", "streaming"]
 categories = ["asynchronous", "network-programming"]
 
@@ -32,7 +31,17 @@ inherits = "release"
 debug = 1
 
 [workspace.dependencies]
-quark = { git = "https://github.com/unified-field-dev/quark.git", rev = "77e50b8374b65319ceeaf0b2ab1664a2919f517a" }
+quark = { package = "uf-quark", version = "0.1.1" }
+photon-core = { package = "uf-photon-core", version = "0.1.0", path = "photon-core" }
+photon-macros = { version = "0.1.0", path = "photon-macros" }
+photon-telemetry = { version = "0.1.0", path = "photon-telemetry" }
+photon-backend = { version = "0.1.0", path = "photon-backend", default-features = false }
+photon-runtime = { version = "0.1.0", path = "photon-runtime", default-features = false }
+photon-backend-nats = { version = "0.1.0", path = "photon-backend-nats" }
+photon-backend-kafka = { version = "0.1.0", path = "photon-backend-kafka" }
+photon-backend-fluvio = { version = "0.1.0", path = "photon-backend-fluvio" }
+photon-backend-sqlite = { version = "0.1.0", path = "photon-backend-sqlite" }
+photon = { package = "uf-photon", version = "0.1.0", path = "photon" }
 tempfile = "3"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "postgres"] }
 async-trait = "0.1"

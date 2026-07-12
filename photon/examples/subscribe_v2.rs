@@ -1,6 +1,6 @@
 //! Subscribe macro v2 — `Arc<dyn Actor>` and `HandlerCtx`.
 //!
-//! Run: `cargo run -p photon --example subscribe_v2 --features runtime,mem`
+//! Run: `cargo run -p uf-photon --example subscribe_v2 --features runtime,mem`
 #![allow(missing_docs)]
 #![allow(clippy::unused_async, clippy::used_underscore_binding)]
 

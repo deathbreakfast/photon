@@ -1,15 +1,18 @@
 [package]
-name = "photon-core"
+name = "uf-photon-core"
 version = "0.1.0"
 edition = "2021"
 description = "Photon core types and identity port"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation.workspace = true
+documentation = "https://docs.rs/uf-photon-core"
+readme = "README.md"
 keywords.workspace = true
 categories.workspace = true
-publish = false
+
+[lib]
+name = "photon_core"
 
 [dependencies]
 anyhow = { workspace = true }

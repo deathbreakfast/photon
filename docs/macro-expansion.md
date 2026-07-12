@@ -61,4 +61,4 @@ fn __photon_subscribe_handler<'a>(
 }
 ```
 
-Runnable: `cargo run -p photon --example subscribe_v2 --features runtime,mem`.
+Runnable: `cargo run -p uf-photon --example subscribe_v2 --features runtime,mem`.

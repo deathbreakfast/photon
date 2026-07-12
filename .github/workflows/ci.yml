@@ -22,8 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: cargo check (photon facade)
-        run: cargo check -p photon --features runtime,mem
+      - name: cargo check (uf-photon facade)
+        run: cargo check -p uf-photon --features runtime,mem
 
   deny:
     runs-on: ubuntu-latest
@@ -181,17 +181,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: embedded_mem example
-        run: cargo run -p photon --example embedded_mem --features runtime,mem
+        run: cargo run -p uf-photon --example embedded_mem --features runtime,mem
       - name: consumer_group example
-        run: cargo run -p photon --example consumer_group --features runtime,mem
+        run: cargo run -p uf-photon --example consumer_group --features runtime,mem
       - name: manual_subscribe example
-        run: cargo run -p photon --example manual_subscribe --features runtime,mem
+        run: cargo run -p uf-photon --example manual_subscribe --features runtime,mem
       - name: keyed_topic example
-        run: cargo run -p photon --example keyed_topic --features runtime,mem
+        run: cargo run -p uf-photon --example keyed_topic --features runtime,mem
       - name: telemetry_ops_log example
-        run: cargo run -p photon --example telemetry_ops_log --features runtime,mem
+        run: cargo run -p uf-photon --example telemetry_ops_log --features runtime,mem
       - name: subscribe_v2 example
-        run: cargo run -p photon --example subscribe_v2 --features runtime,mem
+        run: cargo run -p uf-photon --example subscribe_v2 --features runtime,mem
 
   docs:
     runs-on: ubuntu-latest
@@ -204,7 +204,7 @@ jobs:
         run: cargo doc --workspace --no-deps --all-features
       - name: cargo test --doc (facade + runtime + macros + backend)
         run: |
-          cargo test -p photon --doc --features runtime,mem
+          cargo test -p uf-photon --doc --features runtime,mem
           cargo test -p photon-runtime --doc --features runtime,mem
           cargo test -p photon-macros --doc
           cargo test -p photon-backend --doc --features runtime

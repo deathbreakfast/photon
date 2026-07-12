@@ -15,19 +15,19 @@ sqlite = ["mem", "dep:photon-backend-sqlite"]
 backend-author = []
 
 [dependencies]
-photon-runtime = { path = "../photon-runtime", default-features = false, features = ["runtime", "mem"] }
-photon-core = { path = "../photon-core" }
-photon-backend = { path = "../photon-backend", default-features = false, features = ["runtime"] }
-photon-backend-nats = { path = "../photon-backend-nats", optional = true }
-photon-backend-fluvio = { path = "../photon-backend-fluvio", optional = true }
-photon-backend-kafka = { path = "../photon-backend-kafka", optional = true }
-photon-backend-sqlite = { path = "../photon-backend-sqlite", optional = true }
+photon-runtime = { workspace = true, features = ["runtime", "mem"] }
+photon-core = { workspace = true }
+photon-backend = { workspace = true, features = ["runtime"] }
+photon-backend-nats = { workspace = true, optional = true }
+photon-backend-fluvio = { workspace = true, optional = true }
+photon-backend-kafka = { workspace = true, optional = true }
+photon-backend-sqlite = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 futures = "0.3"
-photon-telemetry = { path = "../photon-telemetry", features = ["recording"] }
+photon-telemetry = { workspace = true, features = ["recording"] }
 tempfile = { workspace = true }
 
 [dev-dependencies]

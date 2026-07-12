@@ -36,7 +36,7 @@ fn map_sqlx(err: &sqlx::Error) -> PhotonError {
 /// Embedded `SQLite` storage for the `sqlite` adapter tier.
 ///
 /// Write-through persistence with in-memory live fanout. Enable the `sqlite` feature on the
-/// `photon` facade and install via [`PhotonBuilder::storage_port`](https://docs.rs/photon/latest/photon/struct.PhotonBuilder.html#method.storage_port).
+/// `photon` facade and install via [`PhotonBuilder::storage_port`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html#method.storage_port).
 ///
 /// Path / env: see module `config` (`PHOTON_SQLITE_PATH`).
 pub struct SqliteStoragePort {

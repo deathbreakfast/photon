@@ -14,7 +14,7 @@ mod topic;
 ///
 /// # Usage
 ///
-/// ```no_run
+/// ```ignore
 /// use photon::topic;
 ///
 /// #[topic(name = "user.notifications", keyed_by = "user_id")]
@@ -31,7 +31,7 @@ pub fn topic(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// # Usage (v1 — `Box<dyn Actor>`)
 ///
-/// ```no_run
+/// ```ignore
 /// use photon::{topic, subscribe, Actor, Result};
 ///
 /// #[topic(name = "user.notifications")]

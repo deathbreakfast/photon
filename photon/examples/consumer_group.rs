@@ -1,6 +1,6 @@
 //! Consumer group topic + group handler — **Creating topics**.
 //!
-//! Run: `cargo run -p photon --example consumer_group --features runtime,mem`
+//! Run: `cargo run -p uf-photon --example consumer_group --features runtime,mem`
 //!
 //! Requires `PHOTON_TRANSPORT_KEY` (see `docs/configuration.md`).
 #![allow(missing_docs)]

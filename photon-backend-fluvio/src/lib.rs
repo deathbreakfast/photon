@@ -2,12 +2,12 @@
 //!
 //! Wraps Fluvio consumer groups, checkpoint persistence, and topic sharding behind the shared
 //! storage contract. Enable via the `fluvio` feature on the
-//! [`photon`](https://docs.rs/photon/latest/photon/) facade.
+//! [`photon`](https://docs.rs/uf-photon/latest/photon/) facade.
 //!
 //! Connection and topic options: [`FluvioConfig`] and [`FluvioStoragePortBuilder`]
 //! (builder methods + env fallbacks documented on the builder).
 //!
-//! Wire with [`PhotonBuilder::storage_port`](https://docs.rs/photon/latest/photon/struct.PhotonBuilder.html#method.storage_port)
+//! Wire with [`PhotonBuilder::storage_port`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html#method.storage_port)
 //! after [`FluvioStoragePortBuilder::build`](FluvioStoragePortBuilder::build).
 //!
 //! ## Entry points

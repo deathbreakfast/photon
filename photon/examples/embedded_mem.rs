@@ -1,6 +1,6 @@
 //! Minimal embedded Photon — **Integrating the host** + **Creating topics**.
 //!
-//! Run: `cargo run -p photon --example embedded_mem --features runtime,mem`
+//! Run: `cargo run -p uf-photon --example embedded_mem --features runtime,mem`
 //!
 //! Requires `PHOTON_TRANSPORT_KEY` (base64-encoded 32-byte key). Smoke / CI use
 //! `cGhvdG9uLWRldi10cmFuc3BvcnQta2V5LTMyYnl0ZXM=` (dev key). See `docs/configuration.md`.

@@ -1,6 +1,6 @@
 # photon-bench
 
-Synthetic benchmarks and pre-registered experiment matrix for Photon pub/sub across storage adapters (`mem`, `sqlite`, `nats`, `fluvio`, `kafka`). Adapter contract: [docs.rs `photon` architecture](https://docs.rs/photon/latest/photon/#architecture).
+Synthetic benchmarks and pre-registered experiment matrix for Photon pub/sub across storage adapters (`mem`, `sqlite`, `nats`, `fluvio`, `kafka`). Adapter contract: [docs.rs `photon` architecture](https://docs.rs/uf-photon/latest/photon/#architecture).
 
 | Document | Role |
 |----------|------|

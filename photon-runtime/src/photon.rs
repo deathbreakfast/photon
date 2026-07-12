@@ -133,7 +133,7 @@ impl Photon {
     /// Subscribe to topic events as a stream.
     ///
     /// For typed topics, prefer `TopicType::subscribe(opts)` or the `#[subscribe]` macro.
-    /// Runnable walkthrough: `cargo run -p photon --example manual_subscribe --features runtime,mem`.
+    /// Runnable walkthrough: `cargo run -p uf-photon --example manual_subscribe --features runtime,mem`.
     ///
     /// # Example
     ///

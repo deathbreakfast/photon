@@ -59,7 +59,7 @@
 //!
 //! Manual streams without the macro: [`Photon::subscribe`], [`SubscribeOpts`].
 //!
-//! Runnable: `cargo run -p photon --example manual_subscribe --features runtime,mem`.
+//! Runnable: `cargo run -p uf-photon --example manual_subscribe --features runtime,mem`.
 //!
 //! ### Integrating the host
 //!
@@ -80,7 +80,7 @@
 //! - [`Photon::start_executor`] — durable / group handler dispatch
 //! - [`Photon::reclaim_transport`] — retention sweep entry point
 //!
-//! Runnable: `cargo run -p photon --example embedded_mem --features runtime,mem`
+//! Runnable: `cargo run -p uf-photon --example embedded_mem --features runtime,mem`
 //! (requires `PHOTON_TRANSPORT_KEY`; see example).
 //!
 //! ### Developing the backend

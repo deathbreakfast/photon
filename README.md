@@ -1,9 +1,18 @@
 [![CI](https://github.com/unified-field-dev/photon/actions/workflows/ci.yml/badge.svg)](https://github.com/unified-field-dev/photon/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/uf-photon.svg)](https://crates.io/crates/uf-photon)
+[![docs.rs](https://docs.rs/uf-photon/badge.svg)](https://docs.rs/uf-photon)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[GitHub](https://github.com/unified-field-dev/photon) · `cargo doc -p photon --features runtime,mem --open` · [Benchmarks](photon-bench/README.md)
+[GitHub](https://github.com/unified-field-dev/photon) · [crates.io](https://crates.io/crates/uf-photon) · `cargo doc -p uf-photon --features runtime,mem --open` · [Benchmarks](photon-bench/README.md)
 
 # Photon
+
+The crates.io package is **`uf-photon`** (`photon` is taken). With `[lib] name = "photon"`, imports stay `use photon::…`:
+
+```toml
+photon = { package = "uf-photon", version = "0.1.0", features = ["runtime", "mem"] }
+# or: cargo add uf-photon --features runtime,mem
+```
 
 ```rust
 use std::sync::Arc;
@@ -44,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
 
 ## About Photon
 
-Photon is a Rust pub/sub runtime with typed topics and durable subscriptions. Storage is pluggable via [`StoragePort`](photon-backend/src/storage/port.rs). Built-in adapters: `mem`, `sqlite`, `nats`, `fluvio`, `kafka`, wired through [`GenericPhotonBackend`](photon-backend/src/backend/generic.rs). Architecture: [docs.rs `photon`](https://docs.rs/photon/latest/photon/#architecture).
+Photon is a Rust pub/sub runtime with typed topics and durable subscriptions. Storage is pluggable via [`StoragePort`](photon-backend/src/storage/port.rs). Built-in adapters: `mem`, `sqlite`, `nats`, `fluvio`, `kafka`, wired through [`GenericPhotonBackend`](photon-backend/src/backend/generic.rs). Architecture: [docs.rs `photon`](https://docs.rs/uf-photon/latest/photon/#architecture).
 
 ## Performance
 
@@ -119,19 +128,19 @@ Photon::builder()
     .build()?;
 ```
 
-See [docs.rs `photon::config`](https://docs.rs/photon/latest/photon/config/) and [architecture](https://docs.rs/photon/latest/photon/#architecture).
+See [docs.rs `photon::config`](https://docs.rs/uf-photon/latest/photon/config/) and [architecture](https://docs.rs/uf-photon/latest/photon/#architecture).
 
 ## Learn more
 
 | Link | Why |
 |------|-----|
-| [docs.rs `photon::config`](https://docs.rs/photon/latest/photon/config/) | Env vars, macro attrs, builder options |
+| [docs.rs `photon::config`](https://docs.rs/uf-photon/latest/photon/config/) | Env vars, macro attrs, builder options |
 | [docs/macro-expansion.md](docs/macro-expansion.md) | What `#[topic]` / `#[subscribe]` generate |
-| `cargo doc -p photon --features runtime,mem --open` | Architecture + API (primary) |
+| `cargo doc -p uf-photon --features runtime,mem --open` | Architecture + API (primary) |
 | [photon/README.md](photon/README.md) | Features, wiring checklist |
 | [photon-bench/PERFORMANCE_STUDY.md](photon-bench/PERFORMANCE_STUDY.md) | Performance methodology |
 | [photon-bench/EXPERIMENTS.md](photon-bench/EXPERIMENTS.md) | Benchmark registry |
-| [Quark](https://github.com/unified-field-dev/quark) | Topic/handler inventory |
+| [uf-quark](https://crates.io/crates/uf-quark) / [Quark](https://github.com/unified-field-dev/quark) | Topic/handler inventory |
 | [.github/workflows/ci.yml](.github/workflows/ci.yml) | CI verify commands |
 
 ## FAQ

@@ -40,7 +40,7 @@ rm -rf /tmp/photon-target
 mkdir -p /tmp/photon-target
 
 echo "=== check (photon facade) ==="
-cargo check -p photon --features runtime,mem
+cargo check -p uf-photon --features runtime,mem
 
 echo "=== deny ==="
 if ! command -v cargo-deny >/dev/null 2>&1; then
@@ -77,16 +77,16 @@ echo "$out"
 echo "$out" | grep -q '"pass": true'
 
 echo "=== examples ==="
-cargo run -p photon --example embedded_mem --features runtime,mem
-cargo run -p photon --example consumer_group --features runtime,mem
-cargo run -p photon --example manual_subscribe --features runtime,mem
-cargo run -p photon --example keyed_topic --features runtime,mem
-cargo run -p photon --example telemetry_ops_log --features runtime,mem
-cargo run -p photon --example subscribe_v2 --features runtime,mem
+cargo run -p uf-photon --example embedded_mem --features runtime,mem
+cargo run -p uf-photon --example consumer_group --features runtime,mem
+cargo run -p uf-photon --example manual_subscribe --features runtime,mem
+cargo run -p uf-photon --example keyed_topic --features runtime,mem
+cargo run -p uf-photon --example telemetry_ops_log --features runtime,mem
+cargo run -p uf-photon --example subscribe_v2 --features runtime,mem
 
 echo "=== docs ==="
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
-cargo test -p photon --doc --features runtime,mem
+cargo test -p uf-photon --doc --features runtime,mem
 cargo test -p photon-runtime --doc --features runtime,mem
 cargo test -p photon-macros --doc
 cargo test -p photon-backend --doc --features runtime

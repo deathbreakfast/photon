@@ -1,10 +1,10 @@
 # Supply chain policy
 
-Photon pins Quark via a Git revision in the workspace `Cargo.toml` (`quark` → `unified-field-dev/quark`). That pin is intentional until Quark publishes a crates.io release that Photon can depend on.
+Photon depends on Quark via crates.io as [`uf-quark`](https://crates.io/crates/uf-quark) (`quark = { package = "uf-quark", version = "…" }` in the workspace `Cargo.toml`). Rust imports remain `use quark::…`.
 
 ## Rules
 
-1. **Prefer crates.io** for all other dependencies.
+1. **Prefer crates.io** for all dependencies.
 2. **New Git dependencies** require:
    - An entry in [`deny.toml`](../deny.toml) `[sources].allow-git`
    - A short note in this file (why Git, which rev, migration plan)

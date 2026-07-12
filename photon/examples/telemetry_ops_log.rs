@@ -1,6 +1,6 @@
 //! Install [`ConsoleOpsLog`] at boot — **Integrating the host** (telemetry).
 //!
-//! Run: `cargo run -p photon --example telemetry_ops_log --features runtime,mem`
+//! Run: `cargo run -p uf-photon --example telemetry_ops_log --features runtime,mem`
 //!
 //! Requires `PHOTON_TRANSPORT_KEY` (see `docs/configuration.md`).
 #![allow(missing_docs)]

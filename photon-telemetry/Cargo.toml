@@ -6,10 +6,10 @@ description = "Photon OpsLog telemetry port"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation.workspace = true
+documentation = "https://docs.rs/photon-telemetry"
+readme = "README.md"
 keywords.workspace = true
 categories.workspace = true
-publish = false
 
 [dependencies]
 serde_json = { workspace = true }
@@ -20,6 +20,9 @@ recording = []
 
 [dev-dependencies]
 serde_json = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
 
 [lints]
 workspace = true
