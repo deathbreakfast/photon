@@ -1,0 +1,79 @@
+[package]
+name = "photon"
+version = "0.1.0"
+edition = "2021"
+description = "Pub/sub event pipeline facade — composable storage adapters"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+photon-macros = { path = "../photon-macros" }
+photon-core = { path = "../photon-core" }
+photon-telemetry = { path = "../photon-telemetry" }
+photon-backend = { path = "../photon-backend", default-features = false, optional = true }
+photon-runtime = { path = "../photon-runtime", default-features = false, optional = true }
+photon-backend-nats = { path = "../photon-backend-nats", optional = true }
+photon-backend-kafka = { path = "../photon-backend-kafka", optional = true }
+photon-backend-fluvio = { path = "../photon-backend-fluvio", optional = true }
+photon-backend-sqlite = { path = "../photon-backend-sqlite", optional = true }
+quark = { workspace = true }
+
+[features]
+default = []
+mem = ["photon-backend/mem", "photon-runtime/mem"]
+nats = ["mem", "dep:photon-backend-nats"]
+kafka = ["mem", "dep:photon-backend-kafka"]
+fluvio = ["mem", "dep:photon-backend-fluvio"]
+sqlite = ["mem", "dep:photon-backend-sqlite"]
+runtime = [
+    "dep:photon-backend",
+    "dep:photon-runtime",
+    "mem",
+    "photon-backend/runtime",
+    "photon-runtime/runtime",
+]
+
+[dev-dependencies]
+photon-backend = { path = "../photon-backend", default-features = false, features = ["mem", "runtime"] }
+photon-runtime = { path = "../photon-runtime", default-features = false, features = ["mem", "runtime"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+
+[[example]]
+name = "embedded_mem"
+required-features = ["runtime", "mem"]
+
+[[example]]
+name = "consumer_group"
+required-features = ["runtime", "mem"]
+
+[[example]]
+name = "manual_subscribe"
+required-features = ["runtime", "mem"]
+
+[[example]]
+name = "keyed_topic"
+required-features = ["runtime", "mem"]
+
+[[example]]
+name = "telemetry_ops_log"
+required-features = ["runtime", "mem"]
+
+[[example]]
+name = "subscribe_v2"
+required-features = ["runtime", "mem"]
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true

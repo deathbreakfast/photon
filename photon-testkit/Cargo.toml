@@ -1,0 +1,38 @@
+[package]
+name = "photon-testkit"
+version = "0.1.0"
+edition = "2021"
+description = "Shared matrix/scenario/bootstrap for photon-e2e and photon-bench"
+publish = false
+
+[features]
+default = ["mem"]
+mem = ["photon-runtime/mem"]
+nats = ["mem", "dep:photon-backend-nats"]
+fluvio = ["mem", "dep:photon-backend-fluvio"]
+kafka = ["mem", "dep:photon-backend-kafka"]
+sqlite = ["mem", "dep:photon-backend-sqlite"]
+backend-author = []
+
+[dependencies]
+photon-runtime = { path = "../photon-runtime", default-features = false, features = ["runtime", "mem"] }
+photon-core = { path = "../photon-core" }
+photon-backend = { path = "../photon-backend", default-features = false, features = ["runtime"] }
+photon-backend-nats = { path = "../photon-backend-nats", optional = true }
+photon-backend-fluvio = { path = "../photon-backend-fluvio", optional = true }
+photon-backend-kafka = { path = "../photon-backend-kafka", optional = true }
+photon-backend-sqlite = { path = "../photon-backend-sqlite", optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+futures = "0.3"
+photon-telemetry = { path = "../photon-telemetry", features = ["recording"] }
+tempfile = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+serial_test = "3"
+
+[lints]
+workspace = true

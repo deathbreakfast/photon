@@ -1,0 +1,42 @@
+[package]
+name = "photon-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Photon runtime builder and process-wide configuration"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+publish = false
+
+[dependencies]
+photon-core = { path = "../photon-core" }
+photon-backend = { path = "../photon-backend", default-features = false }
+photon-telemetry = { path = "../photon-telemetry" }
+futures = { version = "0.3", optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tracing = { version = "0.1", optional = true }
+tokio-util = { version = "0.7", features = ["rt"], optional = true }
+
+[features]
+default = []
+runtime = [
+    "photon-backend/runtime",
+    "dep:futures",
+    "dep:anyhow",
+    "dep:tokio",
+    "dep:tracing",
+    "dep:tokio-util",
+]
+mem = ["photon-backend/mem", "runtime"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true

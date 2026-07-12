@@ -1,0 +1,78 @@
+[package]
+name = "photon-backend"
+version = "0.1.0"
+edition = "2021"
+description = "Photon publish/subscribe backend implementations and storage adapters"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+publish = false
+
+[dependencies]
+photon-core = { path = "../photon-core" }
+photon-telemetry = { path = "../photon-telemetry" }
+quark = { workspace = true }
+tokio = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+futures = { version = "0.3", optional = true }
+async-stream = { version = "0.3", optional = true }
+uuid = { version = "1.11", features = ["v4"], optional = true }
+chrono = { version = "0.4", features = ["serde"], optional = true }
+chacha20poly1305 = { version = "0.10", optional = true }
+rand_core = { version = "0.6", optional = true }
+zeroize = { version = "1", optional = true }
+base64 = { version = "0.22", optional = true }
+dashmap = { version = "6", optional = true }
+
+[features]
+default = []
+runtime = [
+    "dep:tokio",
+    "dep:thiserror",
+    "dep:anyhow",
+    "dep:async-trait",
+    "dep:futures",
+    "dep:async-stream",
+    "dep:uuid",
+    "dep:chrono",
+    "dep:chacha20poly1305",
+    "dep:rand_core",
+    "dep:zeroize",
+    "dep:base64",
+    "dep:dashmap",
+]
+mem = ["runtime"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+photon = { path = "../photon", features = ["runtime", "mem"] }
+photon-testkit = { path = "../photon-testkit" }
+futures = "0.3"
+serde_json = { workspace = true }
+serial_test = "3"
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[bench]]
+name = "envelope_crypto"
+harness = false
+required-features = ["runtime"]
+
+[[bench]]
+name = "shard_routing"
+harness = false
+required-features = ["runtime"]
+
+[[bench]]
+name = "dispatch_stub"
+harness = false
+required-features = ["runtime"]
+
+[lints]
+workspace = true

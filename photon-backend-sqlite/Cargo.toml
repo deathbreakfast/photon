@@ -1,0 +1,34 @@
+[package]
+name = "photon-backend-sqlite"
+version = "0.1.0"
+edition = "2021"
+description = "SQLite embedded storage adapter for Photon"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+publish = false
+
+[dependencies]
+photon-backend = { path = "../photon-backend", default-features = false, features = ["runtime"] }
+async-trait = { workspace = true }
+async-stream = { workspace = true }
+chrono = { workspace = true }
+dashmap = { workspace = true }
+futures = "0.3"
+serde_json = { workspace = true }
+sqlx = { workspace = true, features = ["chrono"] }
+tokio = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+futures = "0.3"
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+uuid = { workspace = true }
+
+[lints]
+workspace = true

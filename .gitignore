@@ -1,0 +1,5 @@
+/target
+/target-*/
+photon-bench/reports/*.json
+profiling/photon-bench/reports-regression/
+profiling/photon-bench/reports-local/

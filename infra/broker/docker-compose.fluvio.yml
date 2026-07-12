@@ -1,0 +1,32 @@
+# Single-node Fluvio lab (SC + SPU). Client connects to SC on localhost:9103.
+services:
+  sc:
+    image: infinyon/fluvio:stable
+    container_name: photon-fluvio-sc
+    hostname: sc
+    ports:
+      - "9103:9003"
+    environment:
+      - RUST_LOG=info
+    command: "./fluvio-run sc --local /fluvio/metadata"
+    volumes:
+      - fluvio-metadata:/fluvio/metadata
+
+  spu:
+    image: infinyon/fluvio:stable
+    container_name: photon-fluvio-spu
+    hostname: spu
+    ports:
+      - "9110:9010"
+      - "9111:9011"
+    environment:
+      - RUST_LOG=info
+    command: "./fluvio-run spu -i 5001 -p spu:9010 -v spu:9011 --sc-addr sc:9004 --log-base-dir /fluvio/data"
+    volumes:
+      - fluvio-data:/fluvio/data
+    depends_on:
+      - sc
+
+volumes:
+  fluvio-metadata:
+  fluvio-data:

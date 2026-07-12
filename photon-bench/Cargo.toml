@@ -1,0 +1,33 @@
+[package]
+name = "photon-bench"
+version = "0.1.0"
+edition = "2021"
+description = "Synthetic Photon benchmarks (BM-P*)"
+publish = false
+
+[[bin]]
+name = "photon-bench"
+path = "src/main.rs"
+
+[features]
+default = ["mem"]
+mem = ["photon-testkit/mem"]
+nats = ["photon-testkit/nats"]
+fluvio = ["photon-testkit/fluvio"]
+kafka = ["photon-testkit/kafka"]
+sqlite = ["photon-testkit/sqlite"]
+full-brokers = ["nats", "fluvio", "kafka"]
+
+[dependencies]
+photon-testkit = { path = "../photon-testkit" }
+clap = { version = "4", features = ["derive"] }
+anyhow = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

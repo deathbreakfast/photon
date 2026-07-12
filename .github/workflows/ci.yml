@@ -1,0 +1,210 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+env:
+  CARGO_BUILD_JOBS: 1
+  RUST_BACKTRACE: 1
+  # Base64 of ASCII "photon-dev-transport-key-32bytes" — CI-only test key, not for production.
+  PHOTON_TRANSPORT_KEY: cGhvdG9uLWRldi10cmFuc3BvcnQta2V5LTMyYnl0ZXM=
+  PHOTON_NATS_URL: nats://127.0.0.1:4222
+  PHOTON_KAFKA_BROKERS: 127.0.0.1:9092
+  PHOTON_KAFKA_TOPIC_SHARDS: "1"
+  PHOTON_FLUVIO_ENDPOINT: 127.0.0.1:9103
+  PHOTON_FLUVIO_TOPIC_SHARDS: "1"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo check (photon facade)
+        run: cargo check -p photon --features runtime,mem
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: cargo clippy (workspace)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  testkit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: photon-testkit tests
+        run: cargo test -p photon-testkit
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      kafka:
+        image: apache/kafka:3.8.1
+        ports:
+          - 9092:9092
+        env:
+          KAFKA_NODE_ID: 1
+          KAFKA_PROCESS_ROLES: broker,controller
+          KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@127.0.0.1:9093
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+          KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+          KAFKA_NUM_PARTITIONS: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Start NATS JetStream
+        # GHA service containers do not support `command`; start NATS via docker so we can pass -js.
+        run: |
+          docker run -d --name photon-nats \
+            -p 4222:4222 -p 8222:8222 \
+            nats:2.10 -js -m 8222
+          for i in $(seq 1 60); do
+            wget -qO- http://127.0.0.1:8222/healthz >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          echo "NATS not ready" >&2
+          exit 1
+      - name: Wait for Kafka
+        run: |
+          for i in $(seq 1 60); do
+            nc -z 127.0.0.1 9092 && exit 0
+            sleep 2
+          done
+          echo "Kafka not ready" >&2
+          exit 1
+      - name: Start Fluvio lab (SC + SPU)
+        run: |
+          cd infra/broker
+          chmod +x scripts/fluvio-single.sh scripts/fluvio-register-spu.sh
+          ./scripts/fluvio-single.sh
+      - name: Wait for Fluvio
+        run: |
+          for i in $(seq 1 60); do
+            nc -z 127.0.0.1 9103 && exit 0
+            sleep 2
+          done
+          echo "Fluvio not ready" >&2
+          exit 1
+      - name: photon-e2e mem matrix
+        run: cargo test -p photon-e2e -- --test-threads=1
+      - name: photon-e2e sqlite matrix
+        run: cargo test -p photon-e2e --features sqlite -- --test-threads=1
+      - name: photon-backend-sqlite contract
+        run: cargo test -p photon-backend-sqlite --test sqlite_contract
+      - name: photon-e2e nats matrix (JetStream service container)
+        run: cargo test -p photon-e2e --features nats -- --ignored --test-threads=1
+      - name: photon-backend-nats contract (live broker)
+        run: cargo test -p photon-backend-nats --test nats_contract -- --ignored --test-threads=1
+      - name: photon-e2e kafka matrix (Kafka service container)
+        run: cargo test -p photon-e2e --features kafka -- --ignored --test-threads=1
+      - name: photon-backend-kafka contract (live broker)
+        run: cargo test -p photon-backend-kafka --test kafka_contract -- --ignored --test-threads=1
+      - name: photon-e2e fluvio matrix (Fluvio docker-compose lab)
+        run: cargo test -p photon-e2e --features fluvio -- --ignored --test-threads=1
+      - name: photon-backend-fluvio contract (live broker)
+        run: cargo test -p photon-backend-fluvio --test fluvio_contract -- --ignored --test-threads=1
+
+  backend-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: photon-backend integration tests
+        run: cargo test -p photon-backend --features runtime --tests
+
+  coverage:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Line coverage report (workspace, mem tier)
+        run: |
+          cargo llvm-cov --workspace --exclude photon-e2e --exclude photon-bench --features runtime,mem --summary-only
+          cargo llvm-cov --workspace --exclude photon-e2e --exclude photon-bench --features runtime,mem --lcov --output-path lcov.info
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov.info
+
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: photon-bench release build
+        run: cargo build -p photon-bench --release
+
+  bench-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: BM-P0 smoke run
+        run: |
+          out=$(cargo run -p photon-bench -- run \
+            --experiment bm-p0 --storage mem --telemetry off \
+            --ops 100 --hardware ci-small)
+          echo "$out"
+          echo "$out" | grep -q '"pass": true'
+
+  examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: embedded_mem example
+        run: cargo run -p photon --example embedded_mem --features runtime,mem
+      - name: consumer_group example
+        run: cargo run -p photon --example consumer_group --features runtime,mem
+      - name: manual_subscribe example
+        run: cargo run -p photon --example manual_subscribe --features runtime,mem
+      - name: keyed_topic example
+        run: cargo run -p photon --example keyed_topic --features runtime,mem
+      - name: telemetry_ops_log example
+        run: cargo run -p photon --example telemetry_ops_log --features runtime,mem
+      - name: subscribe_v2 example
+        run: cargo run -p photon --example subscribe_v2 --features runtime,mem
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo doc (deny warnings, workspace)
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --workspace --no-deps --all-features
+      - name: cargo test --doc (facade + runtime + macros + backend)
+        run: |
+          cargo test -p photon --doc --features runtime,mem
+          cargo test -p photon-runtime --doc --features runtime,mem
+          cargo test -p photon-macros --doc
+          cargo test -p photon-backend --doc --features runtime

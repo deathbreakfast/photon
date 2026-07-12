@@ -1,0 +1,26 @@
+[package]
+name = "photon-e2e"
+version = "0.1.0"
+edition = "2021"
+description = "Matrix-driven Photon correctness integration tests"
+publish = false
+
+[features]
+default = ["mem"]
+mem = ["photon-testkit/mem"]
+nats = ["photon-testkit/nats"]
+fluvio = ["photon-testkit/fluvio"]
+kafka = ["photon-testkit/kafka"]
+sqlite = ["photon-testkit/sqlite"]
+broker = ["nats"]
+
+[dependencies]
+photon-testkit = { path = "../photon-testkit" }
+
+[dev-dependencies]
+photon-testkit = { path = "../photon-testkit" }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true

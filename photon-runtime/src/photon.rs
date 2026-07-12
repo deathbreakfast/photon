@@ -1,0 +1,308 @@
+//! Main Photon runtime handle — publish/subscribe (**Creating topics**) and builder wiring
+//! (**Integrating the host**).
+
+use std::sync::Arc;
+
+use futures::stream::Stream;
+use photon_core::IdentityFactory;
+
+use photon_backend::{Event, PhotonBackend, ReclaimReport, Result, StoragePort, TopicRegistry, ExecutorServices, BackendCapabilities};
+
+use crate::admin::collect_admin_snapshot;
+use crate::admin::AdminSnapshot;
+
+use crate::executor::ExecutorController;
+
+/// Shared storage port, executor services, and handler dispatch controller.
+#[derive(Clone)]
+pub struct PhotonRuntimeState {
+    /// Storage port used by executor checkpoint/retention services.
+    pub storage_port: Arc<dyn StoragePort>,
+    /// Services used by durable handler executors.
+    pub executor_services: Arc<ExecutorServices>,
+    /// Handler dispatch controller.
+    pub executor: Arc<ExecutorController>,
+}
+
+/// Main Photon runtime handle.
+#[derive(Clone)]
+pub struct Photon {
+    backend: Arc<dyn PhotonBackend>,
+    runtime: PhotonRuntimeState,
+}
+
+static DEFAULT_PHOTON: std::sync::RwLock<Option<Photon>> = std::sync::RwLock::new(None);
+
+/// Configure the default Photon instance used by macro-generated convenience helpers
+/// (`Type::publish()` / `Type::subscribe()`).
+///
+/// Prefer passing an explicit [`Photon`] handle via `publish_on` / `subscribe_on` or
+/// [`Photon::publish`]. This process-wide shim is optional sugar for simple hosts.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use std::sync::Arc;
+///
+/// use photon_core::JsonIdentityFactory;
+/// use photon_runtime::{configure, Photon};
+///
+/// # fn main() -> photon_backend::Result<()> {
+/// let photon = Photon::builder().auto_registry().build()?;
+/// photon.start_executor(Arc::new(JsonIdentityFactory))?;
+/// configure(photon);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Panics
+///
+/// Panics if an internal lock is poisoned.
+pub fn configure(photon: Photon) {
+    let mut guard = DEFAULT_PHOTON.write().unwrap();
+    *guard = Some(photon);
+}
+
+/// Clone of the process-wide Photon set by [`configure`], if any.
+///
+/// Prefer an explicit [`Photon`] handle. This exists for macro convenience helpers.
+///
+/// # Panics
+///
+/// Panics if an internal lock is poisoned.
+pub fn default() -> Option<Photon> {
+    let guard = DEFAULT_PHOTON.read().unwrap();
+    guard.clone()
+}
+
+impl Photon {
+    pub(crate) fn new(backend: Arc<dyn PhotonBackend>, runtime: PhotonRuntimeState) -> Self {
+        Self { backend, runtime }
+    }
+
+    /// Start building a Photon runtime instance.
+    #[must_use]
+    pub fn builder() -> crate::builder::PhotonBuilder {
+        crate::builder::PhotonBuilder::default()
+    }
+
+    /// Telemetry label for the installed backend.
+    #[must_use]
+    pub fn backend_label(&self) -> &'static str {
+        self.backend.telemetry_label()
+    }
+
+    pub(crate) fn backend_capabilities(&self) -> BackendCapabilities {
+        PhotonBackend::capabilities(self.backend.as_ref())
+    }
+
+    /// Compose a read-only ops introspection snapshot for host admin UIs.
+    ///
+    /// Aggregates the topic catalog, handler inventory, backend capabilities, and checkpoint
+    /// cursors for inventory-registered handlers. Does not touch publish/subscribe hot paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a checkpoint load fails.
+    pub async fn admin_snapshot(&self) -> Result<AdminSnapshot> {
+        collect_admin_snapshot(self).await
+    }
+
+    /// Publish a single event to a topic.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    pub async fn publish(
+        &self,
+        topic_name: &str,
+        topic_key: Option<&str>,
+        actor_json: serde_json::Value,
+        payload_json: serde_json::Value,
+    ) -> Result<String> {
+        PhotonBackend::publish(
+            self.backend.as_ref(),
+            topic_name,
+            topic_key,
+            actor_json,
+            payload_json,
+        )
+        .await
+    }
+
+    /// Subscribe to topic events as a stream.
+    ///
+    /// For typed topics, prefer `TopicType::subscribe(opts)` or the `#[subscribe]` macro.
+    /// Runnable walkthrough: `cargo run -p photon --example manual_subscribe --features runtime,mem`.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use futures::StreamExt;
+    /// use photon_runtime::{configure, default, Photon};
+    ///
+    /// # async fn demo() -> photon_backend::Result<()> {
+    /// configure(Photon::builder().auto_registry().build()?);
+    /// let photon = default().expect("configure first");
+    /// let mut stream = photon.subscribe("my.topic", None, None);
+    /// if let Some(result) = stream.next().await {
+    ///     let _event = result?;
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn subscribe(
+        &self,
+        topic_name: &str,
+        topic_key_filter: Option<&str>,
+        after_seq: Option<i64>,
+    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Event>> + Send>> {
+        PhotonBackend::subscribe(
+            self.backend.as_ref(),
+            topic_name.to_string(),
+            topic_key_filter.map(std::string::ToString::to_string),
+            after_seq,
+        )
+    }
+
+    /// Subscribe to assigned virtual shards for a consumer group (multiplexed stream).
+    #[must_use]
+    pub fn subscribe_consumer_group(
+        &self,
+        topic_name: &str,
+        shard_ids: &[u32],
+        after_seq_by_shard: std::collections::HashMap<u32, Option<i64>>,
+    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Event>> + Send>> {
+        photon_backend::merge_shard_streams(
+            Arc::clone(&self.backend),
+            topic_name.to_string(),
+            shard_ids,
+            after_seq_by_shard,
+        )
+    }
+
+    /// Load a specific event by ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    pub async fn get_event(&self, event_id: &str) -> Result<Option<Event>> {
+        PhotonBackend::get_event(self.backend.as_ref(), event_id).await
+    }
+
+    /// Return the registered topic catalog.
+    #[must_use]
+    pub fn registry(&self) -> &TopicRegistry {
+        PhotonBackend::registry(self.backend.as_ref())
+    }
+
+    /// Read the last checkpoint sequence for a subscription/topic pair.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    pub async fn get_checkpoint_seq(
+        &self,
+        subscription_name: &str,
+        topic_name: &str,
+        topic_key: Option<&str>,
+    ) -> Result<Option<i64>> {
+        PhotonBackend::get_checkpoint_seq(
+            self.backend.as_ref(),
+            subscription_name,
+            topic_name,
+            topic_key,
+        )
+        .await
+    }
+
+    /// Persist an updated checkpoint sequence for a subscription/topic pair.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    pub async fn set_checkpoint(
+        &self,
+        subscription_name: &str,
+        topic_name: &str,
+        topic_key: Option<&str>,
+        last_seq: i64,
+    ) -> Result<()> {
+        PhotonBackend::set_checkpoint(
+            self.backend.as_ref(),
+            subscription_name,
+            topic_name,
+            topic_key,
+            last_seq,
+        )
+        .await
+    }
+
+    /// Shared tailer / executor services.
+    #[must_use]
+    pub const fn runtime(&self) -> &PhotonRuntimeState {
+        &self.runtime
+    }
+
+    /// Reclaim transport log rows past the safe watermark (headless ops entry point).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    pub async fn reclaim_transport(&self) -> Result<Vec<ReclaimReport>> {
+        self.runtime
+            .executor_services
+            .retention_reclaimer
+            .sweep_all()
+            .await
+    }
+
+    /// Start inventory-registered `#[photon::subscribe]` handlers.
+    ///
+    /// Requires an [`IdentityFactory`] (e.g. [`photon_core::JsonIdentityFactory`]) for actor
+    /// resolution. Optionally call [`configure`] so convenience `Type::publish()` helpers work.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use std::sync::Arc;
+    ///
+    /// use photon_core::JsonIdentityFactory;
+    /// use photon_runtime::Photon;
+    ///
+    /// # async fn boot() -> photon_backend::Result<()> {
+    /// let photon = Photon::builder().auto_registry().build()?;
+    /// photon.start_executor(Arc::new(JsonIdentityFactory))?;
+    /// photon.shutdown_executor();
+    /// photon.join_executor().await;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the executor was already started on this runtime.
+    #[allow(clippy::needless_pass_by_value)] // Arc-by-value is the public ownership API
+    pub fn start_executor(&self, identity: Arc<dyn IdentityFactory>) -> Result<()> {
+        self.runtime.executor.start(self, &identity)
+    }
+
+    /// Signal handler loops to stop accepting new events.
+    ///
+    /// # Contract
+    ///
+    /// Idempotent. Pair with [`Self::join_executor`] to await in-flight work.
+    pub fn shutdown_executor(&self) {
+        self.runtime.executor.shutdown();
+    }
+
+    /// Await handler loops and in-flight dispatches after [`Self::shutdown_executor`].
+    ///
+    /// # Contract
+    ///
+    /// Safe when the executor was never started. Restart requires a new [`Photon`] build.
+    pub async fn join_executor(&self) {
+        self.runtime.executor.join().await;
+    }
+}
