@@ -164,7 +164,7 @@ See [docs.rs `photon::config`](https://docs.rs/uf-photon/latest/photon/config/) 
 CI runs on every push and PR ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). When local `cargo` is unavailable, use AWS:
 
 ```bash
-./infra/aws/sqlite-smoke/scripts/run-remote-check.sh
+./infra/aws/sqlite-smok~/aws/photon-upstream/sqlite-smoke/run-remote-check.sh
 ```
 
 Doc verification baseline: [docs/VERIFICATION.md](docs/VERIFICATION.md).

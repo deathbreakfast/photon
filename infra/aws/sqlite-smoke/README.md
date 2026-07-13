@@ -20,20 +20,23 @@ export SSH_KEY_PATH=~/.ssh/your-key-name.pem
 chmod +x provision.sh bootstrap.sh scripts/*.sh
 ./provision.sh
 ./bootstrap.sh
-# Compile / clippy / doc / focused backend tests
-./scripts/run-remote-check.sh
-# Full E2E + sqlite contract smoke
-./scripts/run-remote-smoke.sh
+cp instances.env ~/aws/photon-upstream/sqlite-smoke/instances.env
+export INSTANCES_ENV=~/aws/photon-upstream/sqlite-smoke/instances.env
+~/aws/photon-upstream/sqlite-smoke/run-remote-check.sh
+~/aws/photon-upstream/sqlite-smoke/run-remote-smoke.sh
 ./scripts/teardown.sh
 ```
 
-## Scripts
+## Scripts (personal laptop — `~/aws/photon-upstream/`)
 
 | Script | Purpose |
 |--------|---------|
-| `run-remote-check.sh` | rsync + `cargo check` / full-workspace clippy / doc / backend tests |
-| `run-remote-ci.sh` | CI subset without live brokers (check, deny, clippy, testkit, e2e mem/sqlite, bench, examples, docs) |
-| `run-remote-smoke.sh` | rsync + full mem/sqlite E2E + sqlite contract |
+| `sqlite-smoke/run-remote-check.sh` | rsync + `cargo check` / full-workspace clippy / doc / backend tests |
+| `sqlite-smoke/run-remote-ci.sh` | CI subset without live brokers (check, deny, clippy, testkit, e2e mem/sqlite, bench, examples, docs) |
+| `sqlite-smoke/run-remote-smoke.sh` | rsync + full mem/sqlite E2E + sqlite contract |
+
+On-host smoke: `scripts/run-e2e-smoke-aws.sh`. See Cursor skill `aws-remote-verify`.
+
 ## Test matrix
 
 | Layer | Count | Command (on EC2) |
@@ -47,7 +50,7 @@ chmod +x provision.sh bootstrap.sh scripts/*.sh
 Run all backend e2e gates (sqlite, kafka, fluvio, nats) via:
 
 ```bash
-./infra/aws/scripts/run-all-e2e-aws.sh
+~/aws/photon-upstream/scripts/run-all-e2e-aws.sh
 ```
 
 See each smoke README for per-backend provisioning.

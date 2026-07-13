@@ -6,10 +6,10 @@ Re-run after doc changes. See [CONTRIBUTING.md](CONTRIBUTING.md#documentation).
 
 ```bash
 # From a machine with AWS access + instances.env provisioned:
-./infra/aws/sqlite-smoke/scripts/run-remote-check.sh
+./infra/aws/sqlite-smok~/aws/photon-upstream/sqlite-smoke/run-remote-check.sh
 ```
 
-That rsyncs the repo to EC2 and runs `cargo check`, full-workspace Clippy (`--all-targets --all-features -- -D warnings`), rustdoc (`RUSTDOCFLAGS=-D warnings`), and `photon-backend` tests. Broader CI subset (deny, e2e mem/sqlite, bench, examples, doctests): `./infra/aws/sqlite-smoke/scripts/run-remote-ci.sh`. Full E2E smoke: `./infra/aws/sqlite-smoke/scripts/run-remote-smoke.sh`.
+That rsyncs the repo to EC2 and runs `cargo check`, full-workspace Clippy (`--all-targets --all-features -- -D warnings`), rustdoc (`RUSTDOCFLAGS=-D warnings`), and `photon-backend` tests. Broader CI subset (deny, e2e mem/sqlite, bench, examples, doctests): `./~/aws/photon-upstream/sqlite-smoke/run-remote-ci.sh`. Full E2E smoke: `./infra/aws/sqlite-smok~/aws/photon-upstream/sqlite-smoke/run-remote-smoke.sh`.
 
 ## Commands
 

@@ -17,7 +17,7 @@ export SSH_KEY_PATH=~/.ssh/your-key-name.pem
 
 ./provision.sh
 ./bootstrap.sh          # SSH: Docker + Fluvio + Rust toolchain
-./scripts/run-remote-smoke.sh
+~/aws/photon-upstream/fluvio-smoke/run-remote-smoke.sh
 ./scripts/teardown.sh
 ```
 

@@ -29,7 +29,7 @@ Performance budgets belong in [`photon-bench`](../photon-bench/README.md).
 | Trigger | Scope | Command |
 |---------|-------|---------|
 | Push / PR | Full matrix — mem (18 incl. topology/telemetry) + sqlite + brokers | see [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) `e2e` job |
-| AWS (authoritative for dev laptop) | All gates without local `cargo` | [`run-all-e2e-aws.sh`](../infra/aws/scripts/run-all-e2e-aws.sh) |
+| AWS (authoritative for dev laptop) | All gates without local `cargo` | `~/aws/photon-upstream/scripts/run-all-e2e-aws.sh` |
 
 CI sets broker env vars from service containers and the Fluvio lab script (`PHOTON_NATS_URL`, `PHOTON_KAFKA_*`, `PHOTON_FLUVIO_*`).
 
@@ -61,15 +61,15 @@ Backend integration in CI: `subscribe_executor`, `retention_reclaim`, `handler_f
 
 ```bash
 # SQLite + mem gates (auto-provisions t3.medium)
-./infra/aws/sqlite-smoke/scripts/run-remote-smoke.sh   # after provision.sh + bootstrap.sh
+./infra/aws/sqlite-smok~/aws/photon-upstream/sqlite-smoke/run-remote-smoke.sh   # after provision.sh + bootstrap.sh
 
 # All backend e2e gates
-./infra/aws/scripts/run-all-e2e-aws.sh
+~/aws/photon-upstream/scripts/run-all-e2e-aws.sh
 
 # Per-backend (see each README)
 ./infra/aws/broker-fleet/scripts/run-e2e-validation-aws.sh
-./infra/aws/kafka-smoke/scripts/run-remote-smoke.sh
-./infra/aws/fluvio-smoke/scripts/run-remote-smoke.sh
+./infra/aws/kafka-smok~/aws/photon-upstream/sqlite-smoke/run-remote-smoke.sh
+./infra/aws/fluvio-smok~/aws/photon-upstream/sqlite-smoke/run-remote-smoke.sh
 ```
 
 Local `cargo test` (brokers need live services):

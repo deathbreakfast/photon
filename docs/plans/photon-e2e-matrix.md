@@ -12,7 +12,7 @@ Embedded SQLite storage adapter, full e2e scenario coverage, topology/telemetry 
 2. **Matrix wiring** — `StorageAdapter::Sqlite` through testkit, photon-e2e, photon-bench
 3. **E2e scenarios** — 13 sqlite scenarios + topology/telemetry smokes promoted from `#[ignore]`
 4. **`infra/aws/sqlite-smoke`** — t3.medium provision/bootstrap/remote smoke
-5. **`infra/aws/scripts/run-all-e2e-aws.sh`** — orchestrate sqlite + kafka + fluvio + nats gates
+5. **`infra/aws/scripts/~/aws/photon-upstream/scripts/run-all-e2e-aws.sh`** — orchestrate sqlite + kafka + fluvio + nats gates
 6. **Docs** — STORAGE-ADAPTERS-DESIGN, configuration, ROADMAP, photon-e2e README
 
 ## AWS validation
@@ -22,11 +22,11 @@ cd infra/aws/sqlite-smoke
 export AWS_KEY_NAME=your-key
 export SSH_KEY_PATH=~/.ssh/your-key.pem
 chmod +x provision.sh bootstrap.sh scripts/*.sh
-./provision.sh && ./bootstrap.sh && ./scripts/run-remote-smoke.sh
+./provision.sh && ./bootstrap.sh && ~/aws/photon-upstream/sqlite-smoke/run-remote-smoke.sh
 ./scripts/teardown.sh
 
 # All backends (sqlite auto-provisions; others need instances.env)
-./infra/aws/scripts/run-all-e2e-aws.sh
+~/aws/photon-upstream/scripts/run-all-e2e-aws.sh
 ```
 
 ## Out of scope (v1)

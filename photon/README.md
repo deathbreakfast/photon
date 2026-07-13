@@ -135,7 +135,7 @@ Builder fields and env fallbacks: [`NatsStoragePortBuilder` rustdoc](https://doc
 
 ## Verify
 
-Prefer AWS when local cargo is unavailable: `../infra/aws/sqlite-smoke/scripts/run-remote-check.sh`.
+Prefer AWS when local cargo is unavailable: `../infra/aws/sqlite-smok~/aws/photon-upstream/sqlite-smoke/run-remote-check.sh`.
 
 ```bash
 export PHOTON_TRANSPORT_KEY=cGhvdG9uLWRldi10cmFuc3BvcnQta2V5LTMyYnl0ZXM=
