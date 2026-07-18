@@ -10,7 +10,7 @@
 The crates.io package is **`uf-photon`** (`photon` is taken). With `[lib] name = "photon"`, imports stay `use photon::…`:
 
 ```toml
-photon = { package = "uf-photon", version = "0.1.0", features = ["runtime", "mem"] }
+photon = { package = "uf-photon", version = "0.1.1", features = ["runtime", "mem"] }
 # or: cargo add uf-photon --features runtime,mem
 ```
 
@@ -146,7 +146,7 @@ See [Getting started](https://docs.rs/uf-photon/latest/photon/#getting-started) 
 
 ## FAQ
 
-**Is it production-ready?** v0.1.0 early release; `mem` and `sqlite` tiers are tested in CI; NATS / Fluvio / Kafka adapters have PFH fleet ingress numbers — see [PERFORMANCE_STUDY.md](photon-bench/PERFORMANCE_STUDY.md) and [EXPERIMENTS.md](photon-bench/EXPERIMENTS.md).
+**Is it production-ready?** v0.1.1 early release; `mem` and `sqlite` tiers are tested in CI; NATS / Fluvio / Kafka adapters have PFH fleet ingress numbers — see [PERFORMANCE_STUDY.md](photon-bench/PERFORMANCE_STUDY.md) and [EXPERIMENTS.md](photon-bench/EXPERIMENTS.md).
 
 **Do I need an external broker?** No for single-process — default `mem` is in-memory; `sqlite` adds durable embedded storage. Use `nats`, `fluvio`, or `kafka` for fleet scale.
 

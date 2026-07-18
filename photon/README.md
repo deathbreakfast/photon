@@ -1,5 +1,10 @@
 # Photon
 
+[![CI](https://github.com/unified-field-dev/photon/actions/workflows/ci.yml/badge.svg)](https://github.com/unified-field-dev/photon/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/uf-photon.svg)](https://crates.io/crates/uf-photon)
+[![docs.rs](https://docs.rs/uf-photon/badge.svg)](https://docs.rs/uf-photon)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../LICENSE)
+
 Feature flags, wiring, and verify commands for adding Photon to a Rust service. Project overview: [README](../README.md).
 
 ## Install
@@ -7,7 +12,7 @@ Feature flags, wiring, and verify commands for adding Photon to a Rust service. 
 crates.io package **`uf-photon`** (Rust crate name remains `photon`):
 
 ```toml
-photon = { package = "uf-photon", version = "0.1.0", features = ["runtime", "mem"] }
+photon = { package = "uf-photon", version = "0.1.1", features = ["runtime", "mem"] }
 ```
 
 ## Features
