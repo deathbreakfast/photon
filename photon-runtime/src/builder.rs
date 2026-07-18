@@ -27,7 +27,7 @@ type BackendInstallFn =
 ///
 /// | Mode | Typical wiring |
 /// |------|----------------|
-/// | **Mode 1 — Embedded** | Default builder, or [`storage_port`](Self::storage_port) with SQLite |
+/// | **Mode 1 — Embedded** | Default builder, or [`storage_port`](Self::storage_port) with `SQLite` |
 /// | **Mode 2 — Brokered** | [`storage_port`](Self::storage_port) with NATS/Kafka/Fluvio on **every** binary |
 ///
 /// Getting started: [Mode 1](https://docs.rs/uf-photon/latest/photon/#mode-1--embedded-one-binary),
@@ -76,7 +76,7 @@ pub struct PhotonBuilder {
 impl PhotonBuilder {
     /// Explicit storage port (defaults to in-process `mem` via [`InProcStoragePort`]).
     ///
-    /// Use this for SQLite (Mode 1 durable) and for broker adapters (Mode 2 — same port config on
+    /// Use this for `SQLite` (Mode 1 durable) and for broker adapters (Mode 2 — same port config on
     /// publisher and worker). See
     /// [Getting started → Mode 2](https://docs.rs/uf-photon/latest/photon/#mode-2--brokered-publisher--worker-binaries).
     ///

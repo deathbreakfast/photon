@@ -70,7 +70,7 @@
 //! # }
 //! ```
 //!
-//! **SQLite** — durable single-process (write-through + in-memory live fanout):
+//! **`SQLite`** — durable single-process (write-through + in-memory live fanout):
 //!
 //! ```rust,ignore
 //! use std::sync::Arc;

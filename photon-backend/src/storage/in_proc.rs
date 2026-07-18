@@ -40,7 +40,7 @@ fn replay_key(topic_name: &str, topic_key_filter: Option<&str>) -> String {
 /// [`PhotonBuilder::storage_port`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html#method.storage_port).
 ///
 /// **When not to use:** multiple binaries or hosts must share a topic log — pick NATS/Kafka/Fluvio
-/// (Mode 2) or SQLite for durable single-host Mode 1.
+/// (Mode 2) or `SQLite` for durable single-host Mode 1.
 ///
 /// Getting started: [Mode 1](https://docs.rs/uf-photon/latest/photon/#mode-1--embedded-one-binary).
 ///
