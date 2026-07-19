@@ -3,3 +3,6 @@
 photon-bench/reports/*.json
 profiling/photon-bench/reports-regression/
 profiling/photon-bench/reports-local/
+
+# Local Sentrux quality-gate config (dev artifact; not part of upstream)
+.sentrux/
