@@ -20,7 +20,9 @@
 //!
 //! ## Topic mapping (Fluvio)
 //!
-//! - **Topic:** `photon-{topic}` when `topic_shards = 1`; `photon-s-{shard}-{topic}` when sharded (hyphens only).
+//! - **Topic:** `photon-{topic}` when `topic_shards = 1`; `photon-s-{shard}-{topic}` when sharded
+//!   (dots/slashes/colons reversibly escaped).
+//! - **Retention:** `PHOTON_FLUVIO_RETENTION` is applied as segment cleanup policy when Photon creates topics.
 //! - **Checkpoints:** compact topic `photon-checkpoints`.
 //! - **Replay:** [`ReplayCursor::StreamSeq`] uses produce offset+1; [`ReplayCursor::TailOnly`] uses `Offset::end()`.
 

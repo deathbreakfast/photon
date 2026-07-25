@@ -41,8 +41,8 @@ pub mod stream_shard;
 mod subject;
 
 pub use config::{
-    NatsConfig, NatsStoragePortBuilder, ReplayCursor, MAX_INFLIGHT_ENV, REPLAY_CURSOR_ENV,
-    STREAM_ENV, SYNC_ACK_ENV, URL_ENV,
+    NatsConfig, NatsStoragePortBuilder, ReplayCursor, CREDS_ENV, MAX_INFLIGHT_ENV,
+    REPLAY_CURSOR_ENV, STREAM_ENV, SYNC_ACK_ENV, URL_ENV,
 };
 pub use consumer::{deliver_subject_for, durable_consumer_name};
 pub use port::{nats_url_from_env, NatsStoragePort};

@@ -96,12 +96,17 @@ pub const MAX_INFLIGHT_ENV: &str = "PHOTON_KAFKA_MAX_INFLIGHT";
 /// |--------------|---------|---------|
 /// | [`.brokers`](Self::brokers) / [`BROKERS_ENV`] | **required** | Kafka bootstrap servers (comma-separated). |
 /// | [`.topic_prefix`](Self::topic_prefix) / [`PREFIX_ENV`] | `photon` | Topic name prefix. |
-/// | [`.retention`](Self::retention) / [`RETENTION_ENV`](crate::retention::RETENTION_ENV) | `15m` | Topic retention window. |
+/// | [`.retention`](Self::retention) / [`RETENTION_ENV`](crate::retention::RETENTION_ENV) | `15m` | Desired `retention.ms` (not applied at auto-create; see note). |
 /// | [`.replicas`](Self::replicas) / [`REPLICAS_ENV`](crate::replicas::REPLICAS_ENV) | `1` | Topic replication factor. |
 /// | [`.replay_cursor`](Self::replay_cursor) / [`REPLAY_CURSOR_ENV`] | `stream_seq` | [`ReplayCursor::StreamSeq`] or [`ReplayCursor::TailOnly`]. |
 /// | [`.sync_ack`](Self::sync_ack) / [`SYNC_ACK_ENV`] | `1` | Await produce ack (`0` = firehose). |
 /// | [`.max_inflight`](Self::max_inflight) / [`MAX_INFLIGHT_ENV`] | `1` / `256` | Concurrent in-flight publishes (`256` when `sync_ack` off). |
 /// | [`.topic_shards`](Self::topic_shards) / [`TOPIC_SHARDS_ENV`](crate::stream_shard::TOPIC_SHARDS_ENV) | `1` | Ingress shard count (`K>1` → `photon-s.{i}.{topic}`). |
+/// | [`.require_tls`](Self::require_tls) / [`PHOTON_ALLOW_INSECURE_BROKER`](photon_backend::ALLOW_INSECURE_BROKER_ENV) | require TLS | Plaintext brokers need `.allow_insecure_plaintext()`. |
+///
+/// **Retention note:** `rskafka` 0.6 cannot set topic configs on create. Photon logs a one-time
+/// warning and exposes [`crate::topic::retention_ms`] for operators who pre-create topics or set
+/// broker `log.retention.ms`. See repository `SECURITY.md`.
 ///
 /// # Examples
 ///

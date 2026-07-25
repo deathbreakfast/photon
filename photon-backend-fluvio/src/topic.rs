@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use fluvio::metadata::topic::TopicSpec;
+use fluvio::metadata::topic::{CleanupPolicy, SegmentBasedPolicy, TopicSpec};
 use photon_backend::{PhotonError, Result};
 use tracing::warn;
 
@@ -10,11 +10,22 @@ use crate::config::FluvioConfig;
 use crate::connect::SharedClient;
 
 fn topic_spec(config: &FluvioConfig) -> TopicSpec {
-    TopicSpec::new_computed(
+    let mut spec = TopicSpec::new_computed(
         1,
         u32::try_from(config.effective_replicas()).unwrap_or(1),
         None,
-    )
+    );
+    let secs = retention_secs(config.retention);
+    spec.set_cleanup_policy(CleanupPolicy::Segment(SegmentBasedPolicy {
+        time_in_seconds: secs,
+    }));
+    spec
+}
+
+fn retention_secs(retention: Duration) -> u32 {
+    u32::try_from(retention.as_secs())
+        .unwrap_or(u32::MAX)
+        .max(1)
 }
 
 /// Ensure the compact checkpoint topic exists.
@@ -98,5 +109,41 @@ pub fn warn_replication_settings(config: &FluvioConfig) {
             "PHOTON_FLUVIO_REPLICAS>1 with topic_shards=1 causes sublinear publish ingress; \
              set topic_shards to broker count for write-heavy workloads"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::ReplayCursor;
+    use photon_backend::{BrokerTransportSecurity, TransportCrypto};
+
+    fn sample_config(retention: Duration) -> FluvioConfig {
+        FluvioConfig {
+            endpoint: "127.0.0.1:9003".into(),
+            topic_prefix: "photon".into(),
+            retention,
+            replicas: 1,
+            crypto: TransportCrypto::from_bytes(*b"photon-dev-transport-key-32bytes"),
+            replay_cursor: ReplayCursor::StreamSeq,
+            sync_ack: true,
+            max_inflight: 1,
+            topic_shards: 1,
+            transport_security: BrokerTransportSecurity::AllowInsecurePlaintext,
+        }
+    }
+
+    #[test]
+    fn topic_spec_applies_retention_cleanup_policy() {
+        let config = sample_config(Duration::from_mins(15));
+        let spec = topic_spec(&config);
+        assert_eq!(spec.retention_secs(), 900);
+        let policy = spec.get_clean_policy().expect("cleanup policy set");
+        assert_eq!(policy.retention_secs(), 900);
+    }
+
+    #[test]
+    fn retention_secs_clamps_zero_to_one() {
+        assert_eq!(retention_secs(Duration::from_secs(0)), 1);
     }
 }

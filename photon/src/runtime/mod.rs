@@ -7,11 +7,12 @@ pub mod prelude;
 pub use photon_backend::{
     backend, checkpoint, consumer_group, delivery, delivery_mode, descriptor, error, event,
     handler_ctx, handler_descriptor, handler_registry, instrumentation as backend_instrumentation,
-    models, registry, shard_router, storage, BackendCapabilities, BackendContext, DeliveryMode,
-    EmbeddedBackend, Envelope, Event, GenericPhotonBackend, GroupOpts, HandlerCtx,
-    HandlerDescriptor, HandlerRegistry, InProcStoragePort, PhotonBackend, PhotonError, Result,
-    ShardConfig, StoragePort, SubscribeOpts, Subscription, SubscriptionHandle, SubscriptionMode,
-    TopicDescriptor, TopicMetadata, TopicRegistry, TransportCrypto,
+    models, registry, shard_router, storage, BackendCapabilities, BackendContext,
+    BrokerTransportSecurity, DeliveryMode, EmbeddedBackend, Envelope, Event, GenericPhotonBackend,
+    GroupOpts, HandlerCtx, HandlerDescriptor, HandlerRegistry, InProcStoragePort, PhotonBackend,
+    PhotonError, Result, ShardConfig, StoragePort, SubscribeOpts, Subscription, SubscriptionHandle,
+    SubscriptionMode, TopicDescriptor, TopicMetadata, TopicRegistry, TransportCrypto,
+    ALLOW_INSECURE_BROKER_ENV,
 };
 
 pub use photon_runtime::{
@@ -24,19 +25,21 @@ pub use photon_telemetry::{install_ops_log, ops_log, ConsoleOpsLog, NoOpsLog, Op
 
 #[cfg(feature = "nats")]
 pub use photon_backend_nats::{
-    NatsConfig, NatsStoragePort, NatsStoragePortBuilder, ReplayCursor, MAX_INFLIGHT_ENV,
-    REPLAY_CURSOR_ENV, RETENTION_ENV as NATS_RETENTION_ENV, STREAM_ENV as NATS_STREAM_ENV,
-    STREAM_SHARDS_ENV as NATS_STREAM_SHARDS_ENV, SYNC_ACK_ENV, URL_ENV as NATS_URL_ENV,
+    NatsConfig, NatsStoragePort, NatsStoragePortBuilder, ReplayCursor, CREDS_ENV as NATS_CREDS_ENV,
+    MAX_INFLIGHT_ENV, REPLAY_CURSOR_ENV, RETENTION_ENV as NATS_RETENTION_ENV,
+    STREAM_ENV as NATS_STREAM_ENV, STREAM_SHARDS_ENV as NATS_STREAM_SHARDS_ENV, SYNC_ACK_ENV,
+    URL_ENV as NATS_URL_ENV,
 };
 
 #[cfg(feature = "kafka")]
 pub use photon_backend_kafka::{
-    consumer_group_for, durable_consumer_name, kafka_brokers_from_env, KafkaConfig,
-    KafkaStoragePort, KafkaStoragePortBuilder, ReplayCursor as KafkaReplayCursor,
-    BROKERS_ENV as KAFKA_BROKERS_ENV, MAX_INFLIGHT_ENV as KAFKA_MAX_INFLIGHT_ENV,
-    PREFIX_ENV as KAFKA_PREFIX_ENV, REPLAY_CURSOR_ENV as KAFKA_REPLAY_CURSOR_ENV,
-    REPLICAS_ENV as KAFKA_REPLICAS_ENV, RETENTION_ENV as KAFKA_RETENTION_ENV,
-    SYNC_ACK_ENV as KAFKA_SYNC_ACK_ENV, TOPIC_SHARDS_ENV as KAFKA_TOPIC_SHARDS_ENV,
+    consumer_group_for, durable_consumer_name, kafka_brokers_from_env,
+    retention_ms as kafka_retention_ms, KafkaConfig, KafkaStoragePort, KafkaStoragePortBuilder,
+    ReplayCursor as KafkaReplayCursor, BROKERS_ENV as KAFKA_BROKERS_ENV,
+    MAX_INFLIGHT_ENV as KAFKA_MAX_INFLIGHT_ENV, PREFIX_ENV as KAFKA_PREFIX_ENV,
+    REPLAY_CURSOR_ENV as KAFKA_REPLAY_CURSOR_ENV, REPLICAS_ENV as KAFKA_REPLICAS_ENV,
+    RETENTION_ENV as KAFKA_RETENTION_ENV, SYNC_ACK_ENV as KAFKA_SYNC_ACK_ENV,
+    TOPIC_SHARDS_ENV as KAFKA_TOPIC_SHARDS_ENV,
 };
 
 #[cfg(feature = "fluvio")]

@@ -111,6 +111,7 @@
 //! | Worker binary | `[[bin]]` with `#[subscribe]` handlers; **must** call `start_executor` |
 //! | Broker | NATS / Kafka / Fluvio cluster your ops team runs |
 //! | Shared env | Same `PHOTON_TRANSPORT_KEY` + broker URL (e.g. `PHOTON_NATS_URL`) on every process |
+//! | Broker TLS | Default [`BrokerTransportSecurity::RequireTls`]; plaintext needs explicit opt-in |
 //!
 //! ### Shared setup (both binaries)
 //!
@@ -124,6 +125,14 @@
 //! | NATS | `nats` | [`NatsStoragePortBuilder`](../photon_backend_nats/struct.NatsStoragePortBuilder.html) |
 //! | Kafka | `kafka` | [`KafkaStoragePortBuilder`](../photon_backend_kafka/struct.KafkaStoragePortBuilder.html) |
 //! | Fluvio | `fluvio` | [`FluvioStoragePortBuilder`](../photon_backend_fluvio/struct.FluvioStoragePortBuilder.html) |
+//!
+//! | Concern | Production setting |
+//! |---------|-------------------|
+//! | Transport key | `PHOTON_TRANSPORT_KEY` from a secret manager (never `PHOTON_ALLOW_DEV_TRANSPORT_KEY`) |
+//! | Broker TLS | `.require_tls()` / TLS URL (`tls://…`); never set `PHOTON_ALLOW_INSECURE_BROKER` |
+//! | NATS auth | `.credentials_file("/run/secrets/nats.creds")` or `PHOTON_NATS_CREDS` (not URL userinfo) |
+//! | Kafka retention | Pre-create topics with `retention.ms` or broker defaults (`rskafka` cannot set configs) |
+//! | Fluvio retention | Applied at topic create from `PHOTON_FLUVIO_RETENTION` |
 //!
 //! Env index: [`config`]. NATS sketches follow; swap the builder for Kafka/Fluvio.
 //!
@@ -140,7 +149,9 @@
 //! # async fn boot_publisher() -> photon::Result<()> {
 //! let port = Arc::new(
 //!     NatsStoragePort::builder()
-//!         .from_env_defaults()
+//!         .url("tls://nats.example:4222")
+//!         .credentials_file("/run/secrets/nats.creds")
+//!         .require_tls()
 //!         .replay_cursor(ReplayCursor::StreamSeq)
 //!         .sync_ack(true)
 //!         .build()

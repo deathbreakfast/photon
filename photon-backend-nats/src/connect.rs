@@ -4,12 +4,16 @@ use photon_backend::{redact_endpoint, BrokerTransportSecurity, PhotonError, Resu
 
 /// Connect to one or more NATS servers (`PHOTON_NATS_URL` may be comma-separated).
 ///
+/// When `credentials_file` is set, loads a NATS `.creds` file (JWT + `NKey`) instead of URL userinfo.
+///
 /// # Errors
 ///
-/// Returns an error when the security policy rejects the endpoint or connection fails.
+/// Returns an error when the security policy rejects the endpoint, credentials cannot be loaded,
+/// or connection fails. Error labels redact URL userinfo via [`redact_endpoint`].
 pub async fn connect_nats(
     urls: &str,
     security: BrokerTransportSecurity,
+    credentials_file: Option<&str>,
 ) -> Result<async_nats::Client> {
     security.check_endpoint(urls)?;
     let servers: Vec<&str> = urls
@@ -23,17 +27,19 @@ pub async fn connect_nats(
         ));
     }
     let require_tls = matches!(security, BrokerTransportSecurity::RequireTls);
-    if servers.len() == 1 && !require_tls {
-        async_nats::connect(servers[0]).await.map_err(|e| {
-            PhotonError::caused(format!("nats connect {}", redact_endpoint(servers[0])), e)
-        })
-    } else {
-        let mut opts = async_nats::ConnectOptions::new().retry_on_initial_connect();
-        if require_tls {
-            opts = opts.require_tls(true);
-        }
-        opts.connect(servers)
-            .await
-            .map_err(|e| PhotonError::caused(format!("nats connect {}", redact_endpoint(urls)), e))
+    let mut opts = async_nats::ConnectOptions::new().retry_on_initial_connect();
+    if require_tls {
+        opts = opts.require_tls(true);
     }
+    if let Some(path) = credentials_file {
+        opts = opts.credentials_file(path).await.map_err(|e| {
+            PhotonError::caused(
+                format!("nats credentials file {}", redact_endpoint(path)),
+                e,
+            )
+        })?;
+    }
+    opts.connect(servers)
+        .await
+        .map_err(|e| PhotonError::caused(format!("nats connect {}", redact_endpoint(urls)), e))
 }

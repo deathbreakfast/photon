@@ -13,6 +13,9 @@ pub const URL_ENV: &str = "PHOTON_NATS_URL";
 /// Environment variable for `JetStream` stream name.
 pub const STREAM_ENV: &str = "PHOTON_NATS_STREAM";
 
+/// Environment variable for NATS credentials file path (JWT + `NKey` `.creds`).
+pub const CREDS_ENV: &str = "PHOTON_NATS_CREDS";
+
 /// How durable replay and checkpoints map to `JetStream`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ReplayCursor {
@@ -28,6 +31,8 @@ pub enum ReplayCursor {
 pub struct NatsConfig {
     /// NATS server URL(s).
     pub url: String,
+    /// Optional path to a NATS `.creds` file (JWT + `NKey`). Prefer this over URL userinfo.
+    pub credentials_file: Option<String>,
     /// `JetStream` stream name.
     pub stream_name: String,
     /// Stream max age / replay window.
@@ -88,20 +93,22 @@ pub const MAX_INFLIGHT_ENV: &str = "PHOTON_NATS_MAX_INFLIGHT";
 ///
 /// | Method / env | Default | Purpose |
 /// |--------------|---------|---------|
-/// | [`.url`](Self::url) / [`URL_ENV`] | **required** | NATS server URL(s). |
+/// | [`.url`](Self::url) / [`URL_ENV`] | **required** | NATS server URL(s). Prefer `tls://` in production. |
+/// | [`.credentials_file`](Self::credentials_file) / [`CREDS_ENV`] | unset | Path to NATS `.creds` (JWT + `NKey`). Prefer over URL userinfo. |
 /// | [`.stream_name`](Self::stream_name) / [`STREAM_ENV`] | `photon` | `JetStream` stream name. |
-/// | [`.retention`](Self::retention) / [`RETENTION_ENV`](crate::retention::RETENTION_ENV) | `15m` | Stream max age. |
+/// | [`.retention`](Self::retention) / [`RETENTION_ENV`](crate::retention::RETENTION_ENV) | `15m` | Stream max age (applied at stream create). |
 /// | [`.replicas`](Self::replicas) / [`REPLICAS_ENV`](crate::replicas::REPLICAS_ENV) | `1` | Stream replica count. |
 /// | [`.replay_cursor`](Self::replay_cursor) / [`REPLAY_CURSOR_ENV`] | `stream_seq` | [`ReplayCursor::StreamSeq`] or [`ReplayCursor::TailOnly`]. |
 /// | [`.sync_ack`](Self::sync_ack) / [`SYNC_ACK_ENV`] | `1` | Await `JetStream` publish ack (`0` = firehose). |
 /// | [`.max_inflight`](Self::max_inflight) / [`MAX_INFLIGHT_ENV`] | `1` / `256` | Concurrent in-flight publishes (`256` when `sync_ack` off). |
 /// | [`.stream_shards`](Self::stream_shards) / [`STREAM_SHARDS_ENV`](crate::stream_shard::STREAM_SHARDS_ENV) | `1` | `JetStream` stream shard count (`K>1` → `photon-0..K-1`). |
+/// | [`.require_tls`](Self::require_tls) | require TLS | Plaintext `nats://` needs [`.allow_insecure_plaintext`](Self::allow_insecure_plaintext). |
 ///
 /// Set `.stream_shards(K)` consistently across embedded hosts (builder-first; not tied to publisher count).
 ///
 /// # Examples
 ///
-/// ## Publisher binary
+/// ## Publisher binary (TLS + credentials)
 ///
 /// Publish only — skip `start_executor` unless this process also runs handlers.
 ///
@@ -114,7 +121,9 @@ pub const MAX_INFLIGHT_ENV: &str = "PHOTON_NATS_MAX_INFLIGHT";
 /// # async fn boot_publisher() -> photon_backend::Result<()> {
 /// let port = Arc::new(
 ///     NatsStoragePort::builder()
-///         .from_env_defaults()
+///         .url("tls://nats.example:4222")
+///         .credentials_file("/run/secrets/nats.creds")
+///         .require_tls()
 ///         .replay_cursor(ReplayCursor::StreamSeq)
 ///         .sync_ack(true)
 ///         .build()
@@ -165,6 +174,7 @@ pub const MAX_INFLIGHT_ENV: &str = "PHOTON_NATS_MAX_INFLIGHT";
 #[derive(Default)]
 pub struct NatsStoragePortBuilder {
     url: Option<String>,
+    credentials_file: Option<String>,
     transport_security: Option<BrokerTransportSecurity>,
     stream_name: Option<String>,
     retention: Option<Duration>,
@@ -188,6 +198,9 @@ impl NatsStoragePortBuilder {
     pub fn from_env_defaults(mut self) -> Self {
         if self.url.is_none() {
             self.url = std::env::var(URL_ENV).ok();
+        }
+        if self.credentials_file.is_none() {
+            self.credentials_file = std::env::var(CREDS_ENV).ok();
         }
         if self.stream_name.is_none() {
             self.stream_name = Some(std::env::var(STREAM_ENV).unwrap_or_else(|_| "photon".into()));
@@ -217,6 +230,13 @@ impl NatsStoragePortBuilder {
     #[must_use]
     pub fn url(mut self, url: impl Into<String>) -> Self {
         self.url = Some(url.into());
+        self
+    }
+
+    /// Path to a NATS credentials file (JWT + `NKey`). Prefer over embedding secrets in the URL.
+    #[must_use]
+    pub fn credentials_file(mut self, path: impl Into<String>) -> Self {
+        self.credentials_file = Some(path.into());
         self
     }
 
@@ -302,6 +322,7 @@ impl NatsStoragePortBuilder {
         })?;
         Ok(NatsConfig {
             url,
+            credentials_file: builder.credentials_file,
             stream_name: builder.stream_name.unwrap_or_else(|| "photon".into()),
             retention: builder.retention.unwrap_or_else(retention_from_env),
             replicas: builder.replicas.unwrap_or_else(replicas_from_env),

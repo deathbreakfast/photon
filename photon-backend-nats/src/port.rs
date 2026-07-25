@@ -80,7 +80,12 @@ impl NatsStoragePort {
     }
 
     async fn connect_with_config(config: NatsConfig) -> Result<Self> {
-        let client = connect_nats(&config.url, config.transport_security).await?;
+        let client = connect_nats(
+            &config.url,
+            config.transport_security,
+            config.credentials_file.as_deref(),
+        )
+        .await?;
         let jetstream = async_nats::jetstream::new(client);
         ensure_streams(&jetstream, &config).await?;
         let checkpoint_store = CheckpointStore::connect(&jetstream, &config).await?;

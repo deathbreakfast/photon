@@ -96,12 +96,15 @@ pub const MAX_INFLIGHT_ENV: &str = "PHOTON_FLUVIO_MAX_INFLIGHT";
 /// |--------------|---------|---------|
 /// | [`.endpoint`](Self::endpoint) / [`ENDPOINT_ENV`] | **required** | Streaming Controller address (`host:9103`). |
 /// | [`.topic_prefix`](Self::topic_prefix) / [`PREFIX_ENV`] | `photon` | Topic name prefix. |
-/// | [`.retention`](Self::retention) / [`RETENTION_ENV`](crate::retention::RETENTION_ENV) | `15m` | Topic retention window. |
+/// | [`.retention`](Self::retention) / [`RETENTION_ENV`](crate::retention::RETENTION_ENV) | `15m` | Topic segment retention (applied at create). |
 /// | [`.replicas`](Self::replicas) / [`REPLICAS_ENV`](crate::replicas::REPLICAS_ENV) | `1` | Replication factor per topic. |
 /// | [`.replay_cursor`](Self::replay_cursor) / [`REPLAY_CURSOR_ENV`] | `stream_seq` | [`ReplayCursor::StreamSeq`] or [`ReplayCursor::TailOnly`]. |
 /// | [`.sync_ack`](Self::sync_ack) / [`SYNC_ACK_ENV`] | `1` | Await produce ack (`0` = firehose). |
 /// | [`.max_inflight`](Self::max_inflight) / [`MAX_INFLIGHT_ENV`] | `1` / `256` | Concurrent in-flight publishes (`256` for PFH). |
 /// | [`.topic_shards`](Self::topic_shards) / [`TOPIC_SHARDS_ENV`](crate::stream_shard::TOPIC_SHARDS_ENV) | `1` | Ingress shard count (`K>1` → `photon-s-{i}-{topic}`). |
+/// | [`.require_tls`](Self::require_tls) / [`PHOTON_ALLOW_INSECURE_BROKER`](photon_backend::ALLOW_INSECURE_BROKER_ENV) | require TLS | Plaintext endpoints need `.allow_insecure_plaintext()`. |
+///
+/// **Retention:** applied as Fluvio segment cleanup policy when Photon creates the topic.
 ///
 /// # Examples
 ///

@@ -125,6 +125,7 @@ Architecture: repository `docs/adr/001-consumer-groups.md`. Runnable: `cargo run
 | `PHOTON_TRANSPORT_KEY` | *(required)* | `photon-backend/src/event/envelope.rs` | Base64 32-byte envelope encryption key. Fail-closed when unset. |
 | `PHOTON_ALLOW_DEV_TRANSPORT_KEY` | unset | same | Opt-in for hard-coded development key (`1`/`true`). Development only. |
 | `PHOTON_ALLOW_INSECURE_BROKER` | unset | `photon-backend/src/broker_security.rs` | Opt-in for plaintext broker endpoints (`1`/`true`). Development/CI only; default requires TLS-oriented endpoints. |
+| `PHOTON_NATS_CREDS` | unset | `photon-backend-nats` | Path to NATS `.creds` file (JWT + NKey). Prefer over URL userinfo. |
 | `PHOTON_APPEND_ASYNC` | `true` | `photon-backend/src/transport/append_buffer.rs` | Async batched append; `0`/`false`/`no` disables. |
 | `PHOTON_APPEND_BATCH_MAX` | `32` | same | Max records per append batch. |
 | `PHOTON_APPEND_FLUSH_MS` | `10` | same | Flush interval for async append. |

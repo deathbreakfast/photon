@@ -21,6 +21,8 @@
 //! ## Topic mapping (Kafka)
 //!
 //! - **Topic:** `photon-{topic}` when `topic_shards = 1`; `photon-s-{shard}-{topic}` when sharded.
+//! - **Retention:** `PHOTON_KAFKA_RETENTION` is **not** applied at auto-create (`rskafka` limitation).
+//!   Pre-create topics with [`topic::retention_ms`] or set broker `log.retention.ms` (see `SECURITY.md`).
 //! - **Checkpoints:** compact topic `photon-checkpoints` (same key layout as other broker adapters).
 //! - **Replay:** [`ReplayCursor::StreamSeq`] stores offset+1; [`ReplayCursor::TailOnly`] tails live only.
 
@@ -47,3 +49,4 @@ pub use port::{kafka_brokers_from_env, KafkaStoragePort};
 pub use replicas::REPLICAS_ENV;
 pub use retention::RETENTION_ENV;
 pub use stream_shard::TOPIC_SHARDS_ENV;
+pub use topic::retention_ms;
