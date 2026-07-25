@@ -26,11 +26,11 @@
 //!
 //! ## Choose a topology
 //!
-//! - **[Mode 1 — Embedded](#mode-1--embedded-one-binary)** — one process owns publish and
-//!   handlers. Start here (`mem` or `sqlite`).
-//! - **[Mode 2 — Brokered](#mode-2--brokered-publisher--worker-binaries)** — publisher binary(ies)
-//!   and worker binary(ies) share a broker. Photon does **not** ship a separate server binary;
-//!   each process embeds Photon against the same adapter.
+//! - **[Embedded](#embedded-one-binary)** — one process owns publish and handlers. Start here
+//!   (`mem` or `sqlite`).
+//! - **[Brokered](#brokered-publisher--worker-binaries)** — publisher binary(ies) and worker
+//!   binary(ies) share a broker. Photon does **not** ship a separate server binary; each process
+//!   embeds Photon against the same adapter.
 //!
 //! | Topology | Adapter | Features | When to use |
 //! |----------|---------|----------|-------------|
@@ -40,9 +40,9 @@
 //!
 //! Adapter builders and env vars: [`config`].
 //!
-//! After you pick a mode, continue with [declare topics](#3-declare-topics-and-handlers).
+//! After you pick a topology, continue with [declare topics](#3-declare-topics-and-handlers).
 //!
-//! ## Mode 1 — Embedded (one binary)
+//! ## Embedded (one binary)
 //!
 //! This process publishes **and** runs handlers. There is no second binary and no external broker.
 //!
@@ -90,9 +90,10 @@
 //! ```
 //!
 //! Runnable: `cargo run -p uf-photon --example embedded_mem --features runtime,mem`.
+//! Durable: `cargo run -p uf-photon --example embedded_sqlite --features runtime,sqlite`.
 //! Then jump to [declare topics](#3-declare-topics-and-handlers).
 //!
-//! ## Mode 2 — Brokered (publisher + worker binaries)
+//! ## Brokered (publisher + worker binaries)
 //!
 //! Use this when multiple processes (or hosts) must share the same topic log. `mem` and `sqlite`
 //! cannot fan out across processes — wire a broker adapter instead.
@@ -202,6 +203,10 @@
 //! 2. Start **worker(s)** first so subscriptions are ready.
 //! 3. Start one or more **publishers**.
 //!
+//! Runnable: `cargo run -p uf-photon --example nats_worker --features runtime,nats` then
+//! `nats_publisher` (same features). Multi-terminal runbook: repository `photon/README.md`
+//! § How to run examples.
+//!
 //! Then continue with [declare topics](#3-declare-topics-and-handlers).
 //!
 //! ## 3. Declare topics and handlers
@@ -241,7 +246,8 @@
 //! }
 //! ```
 //!
-//! **Inventory handlers** — `#[subscribe]` + [`Photon::start_executor`] (Mode 1 / Mode 2 workers).
+//! **Inventory handlers** — `#[subscribe]` + [`Photon::start_executor`] (Embedded hosts and
+//! Brokered workers).
 //!
 //! Optional sugar after [`configure`]: `.publish()` / `.subscribe()` without a handle.
 //! Raw topic-name API (advanced): [`Photon::subscribe`].
@@ -251,8 +257,8 @@
 //!
 //! ## 5. Run the executor and reclaim
 //!
-//! - [`Photon::start_executor`] — dispatch inventory-registered `#[subscribe]` handlers (Mode 1
-//!   and Mode 2 workers)
+//! - [`Photon::start_executor`] — dispatch inventory-registered `#[subscribe]` handlers (Embedded
+//!   hosts and Brokered workers)
 //! - [`Photon::reclaim_transport`] — retention sweep past the safe watermark
 //! - Optional ops telemetry: [`OpsLog`] via [`PhotonBuilder::ops_log`] (example: `telemetry_ops_log`)
 //!
@@ -266,7 +272,7 @@
 //!   `PHOTON_ALLOW_INSECURE_BROKER`, never `PHOTON_ALLOW_DEV_TRANSPORT_KEY` in production).
 //! - **Durable multi-process:** use a broker adapter; `mem` does not cross process boundaries.
 //! - **Lab topologies:** testkit / bench `PHOTON_TOPOLOGY` values are harness labels — not the
-//!   Mode 1 / Mode 2 product choices above.
+//!   Embedded / Brokered product choices above.
 //! - **Custom adapters:** implement [`StoragePort`] and pass it to
 //!   [`PhotonBuilder::storage_port`]. Advanced delivery traits live behind that port.
 //!

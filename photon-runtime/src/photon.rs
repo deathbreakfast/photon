@@ -1,7 +1,7 @@
 //! Main Photon runtime handle — publish, subscribe, and executor control.
 //!
 //! See the crate [Getting started](https://docs.rs/uf-photon/latest/photon/#getting-started)
-//! for Mode 1 (embedded) and Mode 2 (brokered publisher / worker) walkthroughs.
+//! for Embedded and Brokered (publisher / worker) walkthroughs.
 
 use std::sync::Arc;
 
@@ -33,16 +33,16 @@ pub struct PhotonRuntimeState {
 ///
 /// Keep this value alive for the lifetime of the process that publishes or runs handlers.
 /// Build it once with [`Photon::builder`], pass it to `publish_on` / `subscribe_on`, and call
-/// [`start_executor`](Self::start_executor) on Mode 1 hosts and Mode 2 **worker** binaries.
+/// [`start_executor`](Self::start_executor) on Embedded hosts and Brokered **worker** binaries.
 ///
 /// | Role | What to call |
 /// |------|----------------|
-/// | Publisher (Mode 2) | `publish_on(&photon)` — usually **no** executor |
-/// | Worker (Mode 2) | [`start_executor`](Self::start_executor) + `#[subscribe]` |
-/// | Embedded (Mode 1) | both publish and [`start_executor`](Self::start_executor) |
+/// | Publisher (Brokered) | `publish_on(&photon)` — usually **no** executor |
+/// | Worker (Brokered) | [`start_executor`](Self::start_executor) + `#[subscribe]` |
+/// | Embedded | both publish and [`start_executor`](Self::start_executor) |
 ///
-/// Getting started: [Mode 1](https://docs.rs/uf-photon/latest/photon/#mode-1--embedded-one-binary),
-/// [Mode 2](https://docs.rs/uf-photon/latest/photon/#mode-2--brokered-publisher--worker-binaries).
+/// Getting started: [Embedded](https://docs.rs/uf-photon/latest/photon/#embedded-one-binary),
+/// [Brokered](https://docs.rs/uf-photon/latest/photon/#brokered-publisher--worker-binaries).
 ///
 /// # Example
 ///
@@ -116,7 +116,7 @@ impl Photon {
 
     /// Start building a Photon runtime instance.
     ///
-    /// See [`crate::builder::PhotonBuilder`] for Mode 1 / Mode 2 wiring.
+    /// See [`crate::builder::PhotonBuilder`] for Embedded / Brokered wiring.
     #[must_use]
     pub fn builder() -> crate::builder::PhotonBuilder {
         crate::builder::PhotonBuilder::default()
@@ -324,11 +324,11 @@ impl Photon {
 
     /// Start inventory-registered `#[photon::subscribe]` handlers.
     ///
-    /// Required on **Mode 1** hosts and **Mode 2 worker** binaries. Publisher-only Mode 2
+    /// Required on **Embedded** hosts and **Brokered worker** binaries. Publisher-only Brokered
     /// processes typically skip this. Requires an [`IdentityFactory`] (e.g.
     /// [`photon_core::JsonIdentityFactory`] for examples/tests) for actor reconstruction.
     ///
-    /// See [Getting started → Mode 2](https://docs.rs/uf-photon/latest/photon/#mode-2--brokered-publisher--worker-binaries).
+    /// See [Getting started → Brokered](https://docs.rs/uf-photon/latest/photon/#brokered-publisher--worker-binaries).
     ///
     /// # Example
     ///

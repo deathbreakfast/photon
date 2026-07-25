@@ -28,7 +28,7 @@ mod topic;
 /// | `shards = N` | Virtual shard count for consumer groups |
 ///
 /// Full attribute reference: [`photon::config`](https://docs.rs/uf-photon/latest/photon/config/#photon-topic).
-/// Getting started: [Mode 1](https://docs.rs/uf-photon/latest/photon/#mode-1--embedded-one-binary).
+/// Getting started: [Embedded](https://docs.rs/uf-photon/latest/photon/#embedded-one-binary).
 ///
 /// # Usage
 ///
@@ -66,7 +66,7 @@ pub fn topic(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// The host must call
 /// [`Photon::start_executor`](https://docs.rs/uf-photon/latest/photon/struct.Photon.html#method.start_executor)
-/// (Mode 1 hosts and Mode 2 **workers**) so inventory-registered handlers run. Publishers that
+/// (Embedded hosts and Brokered **workers**) so inventory-registered handlers run. Publishers that
 /// only emit events can omit the executor.
 ///
 /// | Attribute | Purpose |
@@ -76,7 +76,7 @@ pub fn topic(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// | `group = "id"` | Consumer-group load balancing |
 ///
 /// Full attribute reference: [`photon::config`](https://docs.rs/uf-photon/latest/photon/config/#photon-subscribe).
-/// Getting started: [Mode 2 worker](https://docs.rs/uf-photon/latest/photon/#worker-binary).
+/// Getting started: [Brokered worker](https://docs.rs/uf-photon/latest/photon/#worker-binary).
 ///
 /// # Usage (v1 — `Box<dyn Actor>`)
 ///

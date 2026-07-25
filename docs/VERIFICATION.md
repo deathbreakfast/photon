@@ -34,10 +34,15 @@ cargo test -p photon-backend --doc --features runtime
 
 # Examples on the public crate (need PHOTON_TRANSPORT_KEY — smoke scripts export it)
 cargo run -p uf-photon --example embedded_mem --features runtime,mem
+cargo run -p uf-photon --example embedded_sqlite --features runtime,sqlite
+cargo run -p uf-photon --example subscribe_v2 --features runtime,mem
 cargo run -p uf-photon --example consumer_group --features runtime,mem
 cargo run -p uf-photon --example manual_subscribe --features runtime,mem
 cargo run -p uf-photon --example keyed_topic --features runtime,mem
 cargo run -p uf-photon --example telemetry_ops_log --features runtime,mem
+# Brokered NATS pair (requires JetStream; see photon/README.md § How to run examples)
+# cargo run -p uf-photon --example nats_worker --features runtime,nats
+# cargo run -p uf-photon --example nats_publisher --features runtime,nats
 
 # Integration
 cargo test -p photon-e2e

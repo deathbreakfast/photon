@@ -2,6 +2,10 @@
 
 Embedded SQLite [`StoragePort`](https://docs.rs/photon-backend/latest/photon_backend/trait.StoragePort.html) for durable single-process Photon.
 
+Topology: [Embedded](https://docs.rs/uf-photon/latest/photon/#embedded-one-binary).
+Runnable: `cargo run -p uf-photon --example embedded_sqlite --features runtime,sqlite`
+(see [`photon/README.md`](../photon/README.md#how-to-run-examples)).
+
 ## Wiring
 
 ```rust

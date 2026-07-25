@@ -128,7 +128,7 @@ Photon::builder()
     .build()?;
 ```
 
-See [Getting started](https://docs.rs/uf-photon/latest/photon/#getting-started) (Mode 1 embedded vs Mode 2 brokered) and [`photon::config`](https://docs.rs/uf-photon/latest/photon/config/).
+See [Getting started](https://docs.rs/uf-photon/latest/photon/#getting-started) (Embedded vs Brokered) and [`photon::config`](https://docs.rs/uf-photon/latest/photon/config/). Examples runbook: [`photon/README.md`](photon/README.md#how-to-run-examples).
 
 ## Learn more
 

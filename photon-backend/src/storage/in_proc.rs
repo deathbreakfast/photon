@@ -1,8 +1,8 @@
 //! In-process storage port — broadcast bus, replay buffer, checkpoints (no external deps).
 //!
-//! Default Mode 1 adapter. Events stay inside this process — do **not** use for multi-process
+//! Default Embedded adapter. Events stay inside this process — do **not** use for multi-process
 //! or fleet delivery (use a broker adapter; see
-//! [Getting started → Mode 2](https://docs.rs/uf-photon/latest/photon/#mode-2--brokered-publisher--worker-binaries)).
+//! [Getting started → Brokered](https://docs.rs/uf-photon/latest/photon/#brokered-publisher--worker-binaries)).
 
 use std::collections::{HashMap, VecDeque};
 use std::pin::Pin;
@@ -40,13 +40,13 @@ fn replay_key(topic_name: &str, topic_key_filter: Option<&str>) -> String {
 /// [`PhotonBuilder::storage_port`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html#method.storage_port).
 ///
 /// **When not to use:** multiple binaries or hosts must share a topic log — pick NATS/Kafka/Fluvio
-/// (Mode 2) or `SQLite` for durable single-host Mode 1.
+/// (Brokered) or `SQLite` for durable single-host Embedded.
 ///
-/// Getting started: [Mode 1](https://docs.rs/uf-photon/latest/photon/#mode-1--embedded-one-binary).
+/// Getting started: [Embedded](https://docs.rs/uf-photon/latest/photon/#embedded-one-binary).
 ///
 /// # Examples
 ///
-/// ## Mode 1 host (publish + handlers)
+/// ## Embedded host (publish + handlers)
 ///
 /// One binary owns both publish and `#[subscribe]` dispatch via `start_executor`.
 ///

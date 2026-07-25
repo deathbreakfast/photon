@@ -86,9 +86,11 @@ pub const MAX_INFLIGHT_ENV: &str = "PHOTON_KAFKA_MAX_INFLIGHT";
 /// **Configuration lives here.** Set builder methods explicitly; unset fields fall back to
 /// `PHOTON_KAFKA_*` environment variables via [`from_env_defaults`](Self::from_env_defaults).
 ///
-/// Use the **same** builder settings on every Mode 2 publisher and worker binary that shares a
+/// Use the **same** builder settings on every Brokered publisher and worker binary that shares a
 /// cluster. Getting started:
-/// [Mode 2](https://docs.rs/uf-photon/latest/photon/#mode-2--brokered-publisher--worker-binaries).
+/// [Brokered](https://docs.rs/uf-photon/latest/photon/#brokered-publisher--worker-binaries).
+/// Teach the brokered path once with the NATS examples (`nats_worker` / `nats_publisher`); swap
+/// this builder for Kafka in production.
 ///
 /// # Options
 ///

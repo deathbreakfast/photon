@@ -74,7 +74,7 @@ export PHOTON_TRANSPORT_KEY="$(openssl rand -base64 32)"
 
 Anti-pattern: accepting `?topic=` from the browser and calling `Photon::publish` / subscribe without a policy boundary.
 
-### Broker transport (Mode 2)
+### Broker transport (Brokered)
 
 | Check | How |
 |-------|-----|

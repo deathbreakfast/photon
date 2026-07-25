@@ -1,7 +1,7 @@
 //! [`Photon`] builder — storage port + backend assembly.
 //!
 //! See the crate [Getting started](https://docs.rs/uf-photon/latest/photon/#getting-started)
-//! for Mode 1 (embedded) and Mode 2 (brokered) walkthroughs.
+//! for Embedded and Brokered walkthroughs.
 
 use std::sync::Arc;
 
@@ -24,13 +24,13 @@ type BackendInstallFn = Box<dyn FnOnce(BackendContext) -> Result<Arc<dyn PhotonB
 /// discovery and ops telemetry, then [`build`](Self::build). Keep the returned [`Photon`] handle
 /// for `publish_on` / `subscribe_on`.
 ///
-/// | Mode | Typical wiring |
-/// |------|----------------|
-/// | **Mode 1 — Embedded** | Default builder, or [`storage_port`](Self::storage_port) with `SQLite` |
-/// | **Mode 2 — Brokered** | [`storage_port`](Self::storage_port) with NATS/Kafka/Fluvio on **every** binary |
+/// | Topology | Typical wiring |
+/// |----------|----------------|
+/// | **Embedded** | Default builder, or [`storage_port`](Self::storage_port) with `SQLite` |
+/// | **Brokered** | [`storage_port`](Self::storage_port) with NATS/Kafka/Fluvio on **every** binary |
 ///
-/// Getting started: [Mode 1](https://docs.rs/uf-photon/latest/photon/#mode-1--embedded-one-binary),
-/// [Mode 2](https://docs.rs/uf-photon/latest/photon/#mode-2--brokered-publisher--worker-binaries).
+/// Getting started: [Embedded](https://docs.rs/uf-photon/latest/photon/#embedded-one-binary),
+/// [Brokered](https://docs.rs/uf-photon/latest/photon/#brokered-publisher--worker-binaries).
 ///
 /// # Examples
 ///
@@ -75,9 +75,9 @@ pub struct PhotonBuilder {
 impl PhotonBuilder {
     /// Explicit storage port (defaults to in-process `mem` via [`InProcStoragePort`]).
     ///
-    /// Use this for `SQLite` (Mode 1 durable) and for broker adapters (Mode 2 — same port config on
-    /// publisher and worker). See
-    /// [Getting started → Mode 2](https://docs.rs/uf-photon/latest/photon/#mode-2--brokered-publisher--worker-binaries).
+    /// Use this for `SQLite` (Embedded durable) and for broker adapters (Brokered — same port config
+    /// on publisher and worker). See
+    /// [Getting started → Brokered](https://docs.rs/uf-photon/latest/photon/#brokered-publisher--worker-binaries).
     ///
     /// # Example
     ///

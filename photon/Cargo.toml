@@ -44,7 +44,7 @@ runtime = [
 [dev-dependencies]
 photon-backend = { workspace = true, features = ["mem", "runtime"] }
 photon-runtime = { workspace = true, features = ["mem", "runtime"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "signal"] }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -75,6 +75,18 @@ required-features = ["runtime", "mem"]
 [[example]]
 name = "subscribe_v2"
 required-features = ["runtime", "mem"]
+
+[[example]]
+name = "embedded_sqlite"
+required-features = ["runtime", "sqlite"]
+
+[[example]]
+name = "nats_worker"
+required-features = ["runtime", "nats"]
+
+[[example]]
+name = "nats_publisher"
+required-features = ["runtime", "nats"]
 
 [package.metadata.docs.rs]
 all-features = true

@@ -8,8 +8,8 @@
 //! Reference in-process implementation: [`InProcStoragePort`]. Runnable host example:
 //! `cargo run -p uf-photon --example embedded_mem --features runtime,mem`.
 //!
-//! Getting started: [Mode 1](https://docs.rs/uf-photon/latest/photon/#mode-1--embedded-one-binary),
-//! [Mode 2](https://docs.rs/uf-photon/latest/photon/#mode-2--brokered-publisher--worker-binaries).
+//! Getting started: [Embedded](https://docs.rs/uf-photon/latest/photon/#embedded-one-binary),
+//! [Brokered](https://docs.rs/uf-photon/latest/photon/#brokered-publisher--worker-binaries).
 //!
 //! See also: [`crate::checkpoint`], [`crate::retention`], [`crate::backend`].
 

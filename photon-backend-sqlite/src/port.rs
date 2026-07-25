@@ -42,11 +42,12 @@ fn map_sqlx(err: sqlx::Error) -> PhotonError {
 ///
 /// Path / env: see module `config` (`PHOTON_SQLITE_PATH`).
 ///
-/// Getting started: [Mode 1 durable](https://docs.rs/uf-photon/latest/photon/#mode-1--embedded-one-binary).
+/// Getting started: [Embedded durable](https://docs.rs/uf-photon/latest/photon/#embedded-one-binary).
+/// Runnable: `cargo run -p uf-photon --example embedded_sqlite --features runtime,sqlite`.
 ///
 /// # Examples
 ///
-/// ## Mode 1 host (publish + handlers)
+/// ## Embedded host (publish + handlers)
 ///
 /// One binary owns both publish and `#[subscribe]` dispatch via `start_executor`.
 ///
