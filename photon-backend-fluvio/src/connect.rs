@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use fluvio::{Fluvio, FluvioClusterConfig};
-use photon_backend::{PhotonError, Result};
+use photon_backend::{redact_endpoint, PhotonError, Result};
 
 use crate::config::FluvioConfig;
 
@@ -14,13 +14,19 @@ pub type SharedClient = Arc<Fluvio>;
 ///
 /// # Errors
 ///
-/// Returns an error when connection fails.
+/// Returns an error when the security policy rejects plaintext endpoints or connection fails.
 pub async fn connect_fluvio(config: &FluvioConfig) -> Result<SharedClient> {
     validate_endpoint(&config.endpoint)?;
+    config.transport_security.check_endpoint(&config.endpoint)?;
     let cluster_config = FluvioClusterConfig::new(config.endpoint.clone());
     let client = Fluvio::connect_with_config(&cluster_config)
         .await
-        .map_err(|e| PhotonError::caused(format!("fluvio connect {}", config.endpoint), e))?;
+        .map_err(|e| {
+            PhotonError::caused(
+                format!("fluvio connect {}", redact_endpoint(&config.endpoint)),
+                e,
+            )
+        })?;
     Ok(Arc::new(client))
 }
 

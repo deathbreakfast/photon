@@ -22,7 +22,9 @@ Central index for compile-time options, cross-cutting environment variables, and
 
 **Telemetry:** [`PhotonBuilder::ops_log`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html#method.ops_log) installs at build time; otherwise `PHOTON_TELEMETRY` (see `photon-telemetry/src/global.rs`) applies when ops log is resolved from env.
 
-**Envelope crypto:** `TransportCrypto::from_env()` requires `PHOTON_TRANSPORT_KEY` (fail-closed). Development-only fallback via `from_env_or_dev_default()` needs `PHOTON_ALLOW_DEV_TRANSPORT_KEY=1`.
+**Envelope crypto:** `TransportCrypto::from_env()` requires `PHOTON_TRANSPORT_KEY` (fail-closed). Development-only fallback via `from_env_or_dev_default()` needs `PHOTON_ALLOW_DEV_TRANSPORT_KEY=1`. Adapters seal actor/payload under `__photon_envelope_v1` at rest and on the wire; dual-read still accepts legacy plaintext rows.
+
+**Broker transport security:** builders default to `BrokerTransportSecurity::RequireTls` (or env without opt-in). Plaintext `nats://` / bare `host:port` endpoints require `.allow_insecure_plaintext()` or `PHOTON_ALLOW_INSECURE_BROKER=1` (development/CI only).
 
 ---
 
@@ -122,6 +124,7 @@ Architecture: repository `docs/adr/001-consumer-groups.md`. Runnable: `cargo run
 |----------|---------|--------|---------|
 | `PHOTON_TRANSPORT_KEY` | *(required)* | `photon-backend/src/event/envelope.rs` | Base64 32-byte envelope encryption key. Fail-closed when unset. |
 | `PHOTON_ALLOW_DEV_TRANSPORT_KEY` | unset | same | Opt-in for hard-coded development key (`1`/`true`). Development only. |
+| `PHOTON_ALLOW_INSECURE_BROKER` | unset | `photon-backend/src/broker_security.rs` | Opt-in for plaintext broker endpoints (`1`/`true`). Development/CI only; default requires TLS-oriented endpoints. |
 | `PHOTON_APPEND_ASYNC` | `true` | `photon-backend/src/transport/append_buffer.rs` | Async batched append; `0`/`false`/`no` disables. |
 | `PHOTON_APPEND_BATCH_MAX` | `32` | same | Max records per append batch. |
 | `PHOTON_APPEND_FLUSH_MS` | `10` | same | Flush interval for async append. |

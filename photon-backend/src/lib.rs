@@ -20,6 +20,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod backend;
+pub mod broker_security;
 pub mod checkpoint;
 pub mod consumer_group;
 pub mod delivery;
@@ -32,6 +33,7 @@ pub mod group_subscribe;
 pub mod handler_ctx;
 pub mod handler_descriptor;
 pub mod handler_registry;
+pub mod input;
 pub mod instrumentation;
 pub mod models;
 pub mod publish_routing;
@@ -43,6 +45,7 @@ pub mod storage;
 pub use backend::{
     BackendCapabilities, BackendContext, EmbeddedBackend, GenericPhotonBackend, PhotonBackend,
 };
+pub use broker_security::{BrokerTransportSecurity, ALLOW_INSECURE_BROKER_ENV};
 pub use consumer_group::{
     ConsumerGroupCoordinator, ConsumerLease, FleetGroupCoordinator, GroupMember, LeaseStore,
     MemoryLeaseStore, StaticGroupCoordinator,
@@ -50,12 +53,16 @@ pub use consumer_group::{
 pub use delivery_mode::{DeliveryMode, ShardConfig};
 pub use descriptor::TopicDescriptor;
 pub use error::{PhotonError, Result, SharedError};
-pub use event::TransportCrypto;
+pub use event::{open_stored_event, seal_event_for_storage, TransportCrypto, ENVELOPE_JSON_KEY};
 pub use executor_services::ExecutorServices;
 pub use group_subscribe::merge_shard_streams;
 pub use handler_ctx::HandlerCtx;
 pub use handler_descriptor::HandlerDescriptor;
 pub use handler_registry::HandlerRegistry;
+pub use input::{
+    redact_endpoint, validate_payload_size, validate_topic_name, MAX_PAYLOAD_JSON_BYTES,
+    MAX_TOPIC_NAME_BYTES,
+};
 pub use models::{
     Envelope, Event, GroupOpts, SubscribeOpts, Subscription, SubscriptionHandle, SubscriptionMode,
     TopicMetadata,

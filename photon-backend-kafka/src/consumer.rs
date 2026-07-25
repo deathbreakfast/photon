@@ -8,7 +8,7 @@ use async_stream::stream;
 use futures::stream::{Stream as FuturesStream, StreamExt};
 use photon_backend::models::Event;
 use photon_backend::topic_filter_matches;
-use photon_backend::{PhotonError, Result};
+use photon_backend::{open_stored_event, PhotonError, Result};
 use rskafka::client::partition::{OffsetAt, UnknownTopicHandling};
 use tokio::sync::mpsc;
 
@@ -248,10 +248,15 @@ fn subscribe_single(
                             &config,
                             topic_shard,
                         );
-                        if topic_filter_matches(&decoded.event, &topic, filter.as_ref())
-                            && effective_after.is_none_or(|seq| decoded.event.seq > seq)
-                        {
-                            yield Ok(decoded.event);
+                        match open_stored_event(&config.crypto, decoded.event) {
+                            Ok(event)
+                                if topic_filter_matches(&event, &topic, filter.as_ref())
+                                    && effective_after.is_none_or(|seq| event.seq > seq) =>
+                            {
+                                yield Ok(event);
+                            }
+                            Ok(_) => {}
+                            Err(e) => yield Err(e),
                         }
                     }
                     Err(e) => yield Err(e),

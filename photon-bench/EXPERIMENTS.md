@@ -79,7 +79,7 @@ All **decision-grade** broker PFH ingress numbers use this primary row on **`aws
 | **BM-P6** | broker-ready | Broker fanout latency | fanout p99 | p99 ≤ 103 ms (`PHOTON_BENCH_P6_P99_BUDGET_MS`) | in-VPC PASS 2026-07-07 |
 | **BM-P7** | adapter-ready | Durable handler + checkpoint | replay events/s | Replay &gt; 0 | mem historical PASS |
 | **BM-P8** | adapter-ready | Slow consumer + high publish | error rate | err &lt; 0.1% | mem historical PASS |
-| **BM-P9** | adapter-ready | Crypto on vs off | publish p50 delta | Δ ≤ 15 ms | mem historical PASS |
+| **BM-P9** | adapter-ready | Crypto on vs off | publish p50 delta | Δ ≤ 15 ms | **Re-measure required after F1** — prior runs may have measured encrypt-then-discard; seal+open now on publish/subscribe path. Status: registered pending AWS remeasure |
 
 ### Sustained load
 

@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use photon_backend::{PhotonError, Result, TransportCrypto};
+use photon_backend::{BrokerTransportSecurity, PhotonError, Result, TransportCrypto};
 
 use crate::replicas::replicas_from_env;
 use crate::retention::retention_from_env;
@@ -44,6 +44,8 @@ pub struct KafkaConfig {
     pub max_inflight: u32,
     /// Independent Kafka topics for ingress sharding (`1` = legacy single layout).
     pub topic_shards: u32,
+    /// Plaintext vs TLS connect policy.
+    pub transport_security: BrokerTransportSecurity,
 }
 
 impl KafkaConfig {
@@ -175,6 +177,7 @@ pub struct KafkaStoragePortBuilder {
     sync_ack: Option<bool>,
     max_inflight: Option<u32>,
     topic_shards: Option<u32>,
+    transport_security: Option<BrokerTransportSecurity>,
 }
 
 impl KafkaStoragePortBuilder {
@@ -277,6 +280,20 @@ impl KafkaStoragePortBuilder {
         self
     }
 
+    /// Allow plaintext broker endpoints (development/CI only).
+    #[must_use]
+    pub const fn allow_insecure_plaintext(mut self) -> Self {
+        self.transport_security = Some(BrokerTransportSecurity::AllowInsecurePlaintext);
+        self
+    }
+
+    /// Require TLS-oriented broker endpoints.
+    #[must_use]
+    pub const fn require_tls(mut self) -> Self {
+        self.transport_security = Some(BrokerTransportSecurity::RequireTls);
+        self
+    }
+
     /// Resolve configuration.
     ///
     /// # Errors
@@ -304,6 +321,9 @@ impl KafkaStoragePortBuilder {
             topic_shards: builder
                 .topic_shards
                 .unwrap_or_else(crate::stream_shard::topic_shards_from_env),
+            transport_security: builder
+                .transport_security
+                .unwrap_or_else(BrokerTransportSecurity::from_env),
         })
     }
 }

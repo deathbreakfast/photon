@@ -7,7 +7,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use futures::stream::Stream;
 use photon_backend::models::Event;
-use photon_backend::{PhotonError, Result, StorageCapabilities, StoragePort};
+use photon_backend::{
+    seal_event_for_storage, PhotonError, Result, StorageCapabilities, StoragePort,
+};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -111,8 +113,7 @@ impl StoragePort for KafkaStoragePort {
         actor_json: Value,
         payload_json: Value,
     ) -> Result<Event> {
-        let _ = self.config.crypto.encrypt(&actor_json, &payload_json)?;
-        let mut event = Event {
+        let event = Event {
             event_id: Uuid::new_v4().to_string(),
             topic_name: topic_name.to_string(),
             topic_key: topic_key.map(String::from),
@@ -121,17 +122,18 @@ impl StoragePort for KafkaStoragePort {
             payload_json,
             created_at: Utc::now(),
         };
+        let (mut plain, sealed) = seal_event_for_storage(&self.config.crypto, event)?;
 
-        let routing = publish_routing_key(topic_key, &event.event_id);
+        let routing = publish_routing_key(topic_key, &plain.event_id);
         let shard = pick_shard(&routing, self.config.topic_shards);
         let kafka_topic = kafka_topic_for(&self.config, shard, topic_name);
         self.ensure_topic_once(&kafka_topic).await?;
 
-        let offset_seq = self.pipeline.publish(&kafka_topic, &event).await?;
+        let offset_seq = self.pipeline.publish(&kafka_topic, &sealed).await?;
 
         if self.config.replay_cursor == ReplayCursor::StreamSeq {
             if let Some(seq) = offset_seq {
-                event.seq = if self.config.is_sharded() {
+                plain.seq = if self.config.is_sharded() {
                     composite_seq(shard, u64::try_from(seq.max(0)).unwrap_or(0))
                 } else {
                     seq
@@ -139,7 +141,7 @@ impl StoragePort for KafkaStoragePort {
             }
         }
 
-        Ok(event)
+        Ok(plain)
     }
 
     fn subscribe(

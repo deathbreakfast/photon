@@ -20,7 +20,7 @@ use uuid::Uuid;
 use super::partition::topic_filter_matches;
 use super::port::{StorageCapabilities, StoragePort};
 use crate::error::Result;
-use crate::event::TransportCrypto;
+use crate::event::{open_stored_event, seal_event_for_storage, TransportCrypto};
 use crate::models::Event;
 
 const DEFAULT_REPLAY_BUFFER_SIZE: usize = 1000;
@@ -139,7 +139,6 @@ impl StoragePort for InProcStoragePort {
         actor_json: Value,
         payload_json: Value,
     ) -> Result<Event> {
-        let _ = self.crypto.encrypt(&actor_json, &payload_json)?;
         let seq = self.next_seq(topic_name, topic_key);
         let event = Event {
             event_id: Uuid::new_v4().to_string(),
@@ -150,10 +149,11 @@ impl StoragePort for InProcStoragePort {
             payload_json,
             created_at: Utc::now(),
         };
-        self.events.insert(event.event_id.clone(), event.clone());
-        self.push_replay(&event).await;
-        let _ = self.tx.send(event.clone());
-        Ok(event)
+        let (plain, sealed) = seal_event_for_storage(&self.crypto, event)?;
+        self.events.insert(sealed.event_id.clone(), sealed.clone());
+        self.push_replay(&sealed).await;
+        let _ = self.tx.send(plain.clone());
+        Ok(plain)
     }
 
     fn subscribe(
@@ -164,6 +164,7 @@ impl StoragePort for InProcStoragePort {
     ) -> Pin<Box<dyn Stream<Item = Result<Event>> + Send>> {
         let replay_key = replay_key(&topic_name, topic_key_filter.as_deref());
         let replay_buffer = Arc::clone(&self.replay_buffer);
+        let crypto = self.crypto.clone();
         let mut live_rx = self.tx.subscribe();
         let topic = topic_name;
         let filter = topic_key_filter;
@@ -175,7 +176,7 @@ impl StoragePort for InProcStoragePort {
                 if let Some(queue) = buf.get(&replay_key) {
                     for evt in queue {
                         if evt.seq > seq && topic_filter_matches(evt, &topic, filter.as_ref()) {
-                            yield Ok(evt.clone());
+                            yield open_stored_event(&crypto, evt.clone());
                         }
                     }
                 }
@@ -213,7 +214,7 @@ impl StoragePort for InProcStoragePort {
                                         evt.topic_key.as_deref(),
                                     );
                                     delivery_pins.insert(pk, evt.seq);
-                                    yield Ok(evt.clone());
+                                    yield open_stored_event(&crypto, evt.clone());
                                 }
                             }
                         }
@@ -225,7 +226,10 @@ impl StoragePort for InProcStoragePort {
     }
 
     async fn get_event(&self, event_id: &str) -> Result<Option<Event>> {
-        Ok(self.events.get(event_id).map(|e| e.clone()))
+        self.events
+            .get(event_id)
+            .map(|event| open_stored_event(&self.crypto, event.clone()))
+            .transpose()
     }
 
     async fn load_checkpoint(
@@ -246,7 +250,10 @@ impl StoragePort for InProcStoragePort {
         last_seq: i64,
     ) -> Result<()> {
         let key = Self::checkpoint_key(subscription_name, topic_name, topic_key);
-        self.checkpoints.insert(key, last_seq);
+        self.checkpoints
+            .entry(key)
+            .and_modify(|existing| *existing = (*existing).max(last_seq))
+            .or_insert(last_seq);
         Ok(())
     }
 
@@ -274,5 +281,36 @@ impl StoragePort for InProcStoragePort {
     async fn delivery_seq_pin(&self, topic_name: &str, topic_key: Option<&str>) -> Option<i64> {
         let key = partition_key(topic_name, topic_key);
         self.delivery_pins.get(&key).map(|v| *v)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn append_stores_sealed_fields_and_returns_plaintext() {
+        let port = InProcStoragePort::new(TransportCrypto::from_bytes([7; 32]));
+        let marker = "SECRET_PLAINTEXT_MARKER_xyz";
+        let appended = port
+            .append(
+                "test.sealed",
+                None,
+                serde_json::json!({"actor": "test"}),
+                serde_json::json!({"message": marker}),
+            )
+            .await
+            .expect("append");
+
+        assert!(appended.payload_json.to_string().contains(marker));
+        let stored = port.events.get(&appended.event_id).expect("stored event");
+        assert!(!stored.payload_json.to_string().contains(marker));
+
+        let fetched = port
+            .get_event(&appended.event_id)
+            .await
+            .expect("get event")
+            .expect("event");
+        assert_eq!(fetched.payload_json, appended.payload_json);
     }
 }

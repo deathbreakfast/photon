@@ -16,7 +16,8 @@ use uuid::Uuid;
 
 use photon_backend::models::Event;
 use photon_backend::{
-    topic_filter_matches, PhotonError, Result, StorageCapabilities, StoragePort, TransportCrypto,
+    open_stored_event, seal_event_for_storage, topic_filter_matches, PhotonError, Result,
+    StorageCapabilities, StoragePort, TransportCrypto,
 };
 
 use crate::config::sqlite_path_from_env;
@@ -83,6 +84,11 @@ impl SqliteStoragePort {
     ///
     /// Returns an error if the database cannot be opened or migrated.
     pub async fn open(path: &str) -> Result<Self> {
+        if path.trim().is_empty() {
+            return Err(PhotonError::Internal(
+                "SQLite database path must not be empty".into(),
+            ));
+        }
         let options = SqliteConnectOptions::new()
             .filename(path)
             .create_if_missing(true);
@@ -178,6 +184,7 @@ impl SqliteStoragePort {
 
     async fn load_replay_events(
         pool: &SqlitePool,
+        crypto: &TransportCrypto,
         topic_name: &str,
         topic_key_filter: Option<&str>,
         after_seq: i64,
@@ -208,7 +215,10 @@ impl SqliteStoragePort {
         }
         .map_err(map_sqlx)?;
 
-        rows.iter().map(row_to_event).collect()
+        rows.iter()
+            .map(row_to_event)
+            .map(|event| event.and_then(|event| open_stored_event(crypto, event)))
+            .collect()
     }
 
     async fn fetch_event_by_id(&self, event_id: &str) -> Result<Option<Event>> {
@@ -220,7 +230,11 @@ impl SqliteStoragePort {
         .fetch_optional(&self.pool)
         .await
         .map_err(map_sqlx)?;
-        row.as_ref().map(row_to_event).transpose()
+        row.as_ref()
+            .map(row_to_event)
+            .transpose()?
+            .map(|event| open_stored_event(&self.crypto, event))
+            .transpose()
     }
 }
 
@@ -255,7 +269,6 @@ impl StoragePort for SqliteStoragePort {
         actor_json: Value,
         payload_json: Value,
     ) -> Result<Event> {
-        let _ = self.crypto.encrypt(&actor_json, &payload_json)?;
         let seq = self.next_seq(topic_name, topic_key).await?;
         let event = Event {
             event_id: Uuid::new_v4().to_string(),
@@ -266,26 +279,27 @@ impl StoragePort for SqliteStoragePort {
             payload_json,
             created_at: Utc::now(),
         };
+        let (plain, sealed) = seal_event_for_storage(&self.crypto, event)?;
 
         sqlx::query(
             "INSERT INTO events
              (event_id, topic_name, topic_key, seq, actor_json, payload_json, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(&event.event_id)
-        .bind(&event.topic_name)
-        .bind(&event.topic_key)
-        .bind(event.seq)
-        .bind(event.actor_json.to_string())
-        .bind(event.payload_json.to_string())
-        .bind(event.created_at.to_rfc3339())
+        .bind(&sealed.event_id)
+        .bind(&sealed.topic_name)
+        .bind(&sealed.topic_key)
+        .bind(sealed.seq)
+        .bind(sealed.actor_json.to_string())
+        .bind(sealed.payload_json.to_string())
+        .bind(sealed.created_at.to_rfc3339())
         .execute(&self.pool)
         .await
         .map_err(map_sqlx)?;
 
-        self.events.insert(event.event_id.clone(), event.clone());
-        let _ = self.tx.send(event.clone());
-        Ok(event)
+        self.events.insert(sealed.event_id.clone(), sealed);
+        let _ = self.tx.send(plain.clone());
+        Ok(plain)
     }
 
     fn subscribe(
@@ -295,6 +309,7 @@ impl StoragePort for SqliteStoragePort {
         after_seq: Option<i64>,
     ) -> Pin<Box<dyn Stream<Item = Result<Event>> + Send>> {
         let pool = self.pool.clone();
+        let crypto = self.crypto.clone();
         let mut live_rx = self.tx.subscribe();
         let topic = topic_name.clone();
         let filter = topic_key_filter;
@@ -302,7 +317,7 @@ impl StoragePort for SqliteStoragePort {
 
         Box::pin(stream! {
             if let Some(seq) = after_seq {
-                match Self::load_replay_events(&pool, &topic_name, filter.as_deref(), seq)
+                match Self::load_replay_events(&pool, &crypto, &topic_name, filter.as_deref(), seq)
                     .await
                 {
                     Ok(events) => {
@@ -339,6 +354,7 @@ impl StoragePort for SqliteStoragePort {
                             .unwrap_or(0);
                         match Self::load_replay_events(
                             &pool,
+                            &crypto,
                             &topic_name,
                             filter.as_deref(),
                             after,
@@ -368,7 +384,7 @@ impl StoragePort for SqliteStoragePort {
 
     async fn get_event(&self, event_id: &str) -> Result<Option<Event>> {
         if let Some(ev) = self.events.get(event_id) {
-            return Ok(Some(ev.clone()));
+            return Ok(Some(open_stored_event(&self.crypto, ev.clone())?));
         }
         self.fetch_event_by_id(event_id).await
     }
@@ -398,7 +414,8 @@ impl StoragePort for SqliteStoragePort {
         let key = checkpoint_key(subscription_name, topic_name, topic_key);
         sqlx::query(
             "INSERT INTO checkpoints (checkpoint_key, last_seq) VALUES (?, ?)
-             ON CONFLICT(checkpoint_key) DO UPDATE SET last_seq = excluded.last_seq",
+             ON CONFLICT(checkpoint_key) DO UPDATE
+             SET last_seq = MAX(checkpoints.last_seq, excluded.last_seq)",
         )
         .bind(&key)
         .bind(last_seq)
@@ -411,5 +428,18 @@ impl StoragePort for SqliteStoragePort {
     async fn delivery_seq_pin(&self, topic_name: &str, topic_key: Option<&str>) -> Option<i64> {
         let key = partition_key(topic_name, topic_key);
         self.delivery_pins.get(&key).map(|v| *v)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn open_rejects_empty_path() {
+        assert!(matches!(
+            SqliteStoragePort::open(" ").await,
+            Err(PhotonError::Internal(_))
+        ));
     }
 }

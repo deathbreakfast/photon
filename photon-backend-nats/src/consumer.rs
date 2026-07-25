@@ -10,7 +10,7 @@ use async_stream::stream;
 use futures::stream::{Stream as FuturesStream, StreamExt};
 use photon_backend::models::Event;
 use photon_backend::topic_filter_matches;
-use photon_backend::{PhotonError, Result};
+use photon_backend::{open_stored_event, PhotonError, Result};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -265,10 +265,15 @@ fn subscribe_single(
                     match decode_event(&message) {
                         Ok(mut event) => {
                             normalize_event_seq(&mut event, &message, &config);
-                            if topic_filter_matches(&event, &topic, filter.as_ref())
-                                && after_seq.is_none_or(|seq| event.seq > seq)
+                            match open_stored_event(&config.crypto, event) {
+                                Ok(event)
+                                    if topic_filter_matches(&event, &topic, filter.as_ref())
+                                        && after_seq.is_none_or(|seq| event.seq > seq) =>
                             {
                                 yield Ok(event);
+                            }
+                                Ok(_) => {}
+                                Err(e) => yield Err(e),
                             }
                         }
                         Err(e) => yield Err(e),

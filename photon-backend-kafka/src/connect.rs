@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use photon_backend::{PhotonError, Result};
+use photon_backend::{redact_endpoint, PhotonError, Result};
 use rskafka::client::Client;
 use rskafka::client::ClientBuilder;
 
@@ -15,9 +15,10 @@ pub type SharedClient = Arc<Client>;
 ///
 /// # Errors
 ///
-/// Returns an error when connection fails.
+/// Returns an error when the security policy rejects plaintext brokers or connection fails.
 pub async fn connect_kafka(config: &KafkaConfig) -> Result<SharedClient> {
     validate_brokers(&config.brokers)?;
+    config.transport_security.check_endpoint(&config.brokers)?;
     let brokers: Vec<String> = config
         .brokers
         .split(',')
@@ -25,10 +26,12 @@ pub async fn connect_kafka(config: &KafkaConfig) -> Result<SharedClient> {
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .collect();
-    let client = ClientBuilder::new(brokers)
-        .build()
-        .await
-        .map_err(|e| PhotonError::caused(format!("kafka connect {}", config.brokers), e))?;
+    let client = ClientBuilder::new(brokers).build().await.map_err(|e| {
+        PhotonError::caused(
+            format!("kafka connect {}", redact_endpoint(&config.brokers)),
+            e,
+        )
+    })?;
     Ok(Arc::new(client))
 }
 

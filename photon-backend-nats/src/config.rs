@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use photon_backend::{PhotonError, Result, TransportCrypto};
+use photon_backend::{BrokerTransportSecurity, PhotonError, Result, TransportCrypto};
 
 use crate::replicas::replicas_from_env;
 use crate::retention::retention_from_env;
@@ -44,6 +44,8 @@ pub struct NatsConfig {
     pub max_inflight: u32,
     /// Independent `JetStream` streams for ingress sharding (`1` = legacy single stream).
     pub stream_shards: u32,
+    /// Plaintext vs TLS connect policy.
+    pub transport_security: BrokerTransportSecurity,
 }
 
 impl NatsConfig {
@@ -163,6 +165,7 @@ pub const MAX_INFLIGHT_ENV: &str = "PHOTON_NATS_MAX_INFLIGHT";
 #[derive(Default)]
 pub struct NatsStoragePortBuilder {
     url: Option<String>,
+    transport_security: Option<BrokerTransportSecurity>,
     stream_name: Option<String>,
     retention: Option<Duration>,
     replicas: Option<usize>,
@@ -273,6 +276,20 @@ impl NatsStoragePortBuilder {
         self
     }
 
+    /// Allow plaintext `nats://` endpoints (development/CI only).
+    #[must_use]
+    pub const fn allow_insecure_plaintext(mut self) -> Self {
+        self.transport_security = Some(BrokerTransportSecurity::AllowInsecurePlaintext);
+        self
+    }
+
+    /// Require TLS-oriented broker endpoints (default when unset and env opt-in absent).
+    #[must_use]
+    pub const fn require_tls(mut self) -> Self {
+        self.transport_security = Some(BrokerTransportSecurity::RequireTls);
+        self
+    }
+
     /// Resolve configuration.
     ///
     /// # Errors
@@ -300,6 +317,9 @@ impl NatsStoragePortBuilder {
             stream_shards: builder
                 .stream_shards
                 .unwrap_or_else(crate::stream_shard::stream_shards_from_env),
+            transport_security: builder
+                .transport_security
+                .unwrap_or_else(BrokerTransportSecurity::from_env),
         })
     }
 }

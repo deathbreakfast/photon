@@ -100,6 +100,7 @@ mod tests {
             sync_ack: true,
             max_inflight: 1,
             topic_shards,
+            transport_security: photon_backend::BrokerTransportSecurity::AllowInsecurePlaintext,
         }
     }
 
@@ -135,10 +136,15 @@ mod tests {
     }
 
     #[test]
-    fn dots_become_hyphens() {
+    fn dots_are_escaped_not_collapsed() {
         assert_eq!(
             fluvio_topic_for(&test_config(1), 0, "testkit.contract.uuid"),
-            "photon-testkit-contract-uuid"
+            "photon-testkit~2econtract~2euuid"
+        );
+        // Distinct punctuation must not collide after sanitization.
+        assert_ne!(
+            fluvio_topic_for(&test_config(1), 0, "a.b"),
+            fluvio_topic_for(&test_config(1), 0, "a/b")
         );
     }
 

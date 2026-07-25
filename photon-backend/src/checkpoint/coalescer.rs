@@ -89,7 +89,10 @@ impl CheckpointCoalescer {
         };
         let should_flush = {
             let mut guard = self.pending.lock().await;
-            guard.insert(key, seq);
+            guard
+                .entry(key)
+                .and_modify(|existing| *existing = (*existing).max(seq))
+                .or_insert(seq);
             u32::try_from(guard.len()).unwrap_or(u32::MAX) >= self.flush_every
         };
         if should_flush {
@@ -196,5 +199,27 @@ mod tests {
     fn defaults_are_sane() {
         assert!(checkpoint_flush_every() >= 1);
         assert!(checkpoint_flush_ms() >= 50);
+    }
+
+    #[tokio::test]
+    async fn record_keeps_highest_pending_sequence_for_partition() {
+        let port = Arc::new(crate::storage::InProcStoragePort::new(
+            crate::event::TransportCrypto::from_bytes(*b"photon-dev-transport-key-32bytes"),
+        ));
+        let coalescer = CheckpointCoalescer::new(port);
+
+        coalescer
+            .record("sub-a", "orders.created", None, 10)
+            .await
+            .unwrap();
+        coalescer
+            .record("sub-a", "orders.created", None, 5)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            coalescer.pending_min_seq("orders.created", None).await,
+            Some(10)
+        );
     }
 }

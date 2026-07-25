@@ -14,6 +14,9 @@ const KEY_ENV: &str = "PHOTON_TRANSPORT_KEY";
 const ALLOW_DEV_KEY_ENV: &str = "PHOTON_ALLOW_DEV_TRANSPORT_KEY";
 const DEV_KEY: [u8; 32] = *b"photon-dev-transport-key-32bytes";
 
+/// JSON object key marking sealed actor/payload slots on stored and wire events.
+pub const ENVELOPE_JSON_KEY: &str = "__photon_envelope_v1";
+
 #[derive(Debug, Serialize, Deserialize)]
 struct TransportEnvelope {
     version: u8,
@@ -147,6 +150,55 @@ impl TransportCrypto {
         Ok((env.actor_json, env.payload_json))
     }
 
+    /// Seal actor and payload JSON for storage or transport.
+    ///
+    /// The actor slot is replaced with `null`; the encrypted envelope is standard-base64 encoded
+    /// under [`ENVELOPE_JSON_KEY`] in the payload slot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if JSON serialization or encryption fails.
+    pub fn seal_json_fields(
+        &self,
+        actor_json: &Value,
+        payload_json: &Value,
+    ) -> Result<(Value, Value)> {
+        let ciphertext = self.encrypt(actor_json, payload_json)?;
+        let encoded =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, ciphertext);
+        Ok((
+            Value::Null,
+            serde_json::json!({ ENVELOPE_JSON_KEY: encoded }),
+        ))
+    }
+
+    /// Open actor and payload JSON from a stored or wire event.
+    ///
+    /// Unmarked fields are treated as legacy plaintext so existing persisted rows remain
+    /// readable during migration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a marked envelope contains invalid base64 or cannot be decrypted.
+    pub fn open_json_fields(
+        &self,
+        actor_json: &Value,
+        payload_json: &Value,
+    ) -> Result<(Value, Value)> {
+        let Some(encoded) = payload_json
+            .as_object()
+            .and_then(|fields| fields.get(ENVELOPE_JSON_KEY))
+            .and_then(Value::as_str)
+        else {
+            return Ok((actor_json.clone(), payload_json.clone()));
+        };
+        let ciphertext =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encoded).map_err(
+                |e| PhotonError::caused("transport envelope is not valid standard base64", e),
+            )?;
+        self.decrypt(&ciphertext)
+    }
+
     fn seal(&self, plaintext: &[u8]) -> Result<Vec<u8>> {
         let cipher = XChaCha20Poly1305::new_from_slice(self.key.as_slice())
             .map_err(|e| PhotonError::caused("transport seal key", e))?;
@@ -204,5 +256,61 @@ mod tests {
         let (a, p) = crypto.decrypt(&ct).expect("decrypt");
         assert_eq!(a, actor);
         assert_eq!(p, payload);
+    }
+
+    #[test]
+    fn seal_open_roundtrip() {
+        let crypto = TransportCrypto::from_bytes(DEV_KEY);
+        let actor = json!({"System": {"operation": "test"}});
+        let payload = json!({"secret": "SECRET_PLAINTEXT_MARKER_xyz"});
+
+        let (sealed_actor, sealed_payload) = crypto
+            .seal_json_fields(&actor, &payload)
+            .expect("seal fields");
+        assert_eq!(sealed_actor, Value::Null);
+        assert!(!sealed_payload
+            .to_string()
+            .contains("SECRET_PLAINTEXT_MARKER_xyz"));
+
+        let (opened_actor, opened_payload) = crypto
+            .open_json_fields(&sealed_actor, &sealed_payload)
+            .expect("open fields");
+        assert_eq!(opened_actor, actor);
+        assert_eq!(opened_payload, payload);
+    }
+
+    #[test]
+    fn open_legacy_plaintext_passthrough() {
+        let crypto = TransportCrypto::from_bytes(DEV_KEY);
+        let actor = json!({"System": {"operation": "legacy"}});
+        let payload = json!({"legacy": true});
+
+        let (opened_actor, opened_payload) = crypto
+            .open_json_fields(&actor, &payload)
+            .expect("open legacy fields");
+        assert_eq!(opened_actor, actor);
+        assert_eq!(opened_payload, payload);
+    }
+
+    #[test]
+    fn encrypt_ciphertext_differs_from_plaintext_json() {
+        let crypto = TransportCrypto::from_bytes(DEV_KEY);
+        let actor = json!({"System": {"operation": "test"}});
+        let payload = json!({"n": 1});
+        let encrypted = crypto.encrypt(&actor, &payload).expect("encrypt");
+        let plaintext = serde_json::to_vec(&TransportEnvelope {
+            version: ENVELOPE_VERSION,
+            actor_json: actor,
+            payload_json: payload,
+        })
+        .expect("serialize plaintext");
+        assert_ne!(encrypted, plaintext);
+    }
+
+    #[test]
+    fn open_rejects_invalid_base64_envelope() {
+        let crypto = TransportCrypto::from_bytes(DEV_KEY);
+        let payload = json!({ ENVELOPE_JSON_KEY: "not base64!" });
+        assert!(crypto.open_json_fields(&Value::Null, &payload).is_err());
     }
 }

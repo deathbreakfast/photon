@@ -27,17 +27,24 @@ const KV_SEP: &str = "/";
 const MAX_FLUVIO_TOPIC_LEN: usize = 63;
 
 /// Sanitize a logical topic name for Fluvio topic naming rules.
+///
+/// Characters that previously collapsed onto `-` (`.`, `/`, `:`) are escaped so distinct
+/// logical names cannot collide (`a.b` vs `a/b`).
 #[must_use]
 pub fn sanitize_fluvio_topic_name(topic_name: &str) -> String {
-    topic_name
-        .chars()
-        .map(|c| match c {
-            '.' | '/' | ':' => '-',
-            c if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' => c,
-            c if c.is_ascii_uppercase() => c.to_ascii_lowercase(),
-            _ => '-',
-        })
-        .collect()
+    let mut out = String::with_capacity(topic_name.len());
+    for c in topic_name.chars() {
+        match c {
+            '.' => out.push_str("~2e"),
+            '/' => out.push_str("~2f"),
+            ':' => out.push_str("~3a"),
+            '~' => out.push_str("~7e"),
+            c if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' => out.push(c),
+            c if c.is_ascii_uppercase() => out.push(c.to_ascii_lowercase()),
+            _ => out.push('-'),
+        }
+    }
+    out
 }
 
 pub fn truncate_or_hash(prefix: &str, topic_name: &str) -> String {
@@ -83,4 +90,20 @@ pub fn checkpoint_key_sharded(
 #[must_use]
 pub fn checkpoint_key_unkeyed_shards(sub: &str, topic: &str) -> String {
     format!("{sub}{KV_SEP}__shards__{topic}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitizer_does_not_collide_dot_slash_colon() {
+        let a = sanitize_fluvio_topic_name("a.b");
+        let b = sanitize_fluvio_topic_name("a/b");
+        let c = sanitize_fluvio_topic_name("a:b");
+        assert_ne!(a, b);
+        assert_ne!(a, c);
+        assert_ne!(b, c);
+        assert_eq!(photon_topic("a.b"), format!("photon-{a}"));
+    }
 }

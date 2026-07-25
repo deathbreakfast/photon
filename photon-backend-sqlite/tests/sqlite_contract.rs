@@ -6,6 +6,7 @@ use std::time::Duration;
 use futures::StreamExt;
 use photon_backend::StoragePort;
 use photon_backend_sqlite::SqliteStoragePort;
+use sqlx::Row;
 use tempfile::NamedTempFile;
 
 async fn open_temp_port() -> (SqliteStoragePort, NamedTempFile) {
@@ -77,6 +78,49 @@ async fn sqlite_get_event_and_keyed_filter() {
         .expect("stream")
         .expect("event");
     assert_eq!(received.topic_key.as_deref(), Some(key));
+}
+
+#[tokio::test]
+async fn sqlite_persists_ciphertext_and_returns_plaintext() {
+    let file = NamedTempFile::new().expect("temp db");
+    let path = file.path().to_string_lossy().into_owned();
+    let port = SqliteStoragePort::open(&path).await.expect("open sqlite");
+    let marker = "SECRET_PLAINTEXT_MARKER_xyz";
+    let published = port
+        .append(
+            "testkit.ciphertext",
+            None,
+            serde_json::json!({"actor": "test"}),
+            serde_json::json!({"secret": marker}),
+        )
+        .await
+        .expect("append");
+
+    let pool = sqlx::SqlitePool::connect(&format!("sqlite://{path}"))
+        .await
+        .expect("open raw sqlite");
+    let row = sqlx::query("SELECT payload_json FROM events WHERE event_id = ?")
+        .bind(&published.event_id)
+        .fetch_one(&pool)
+        .await
+        .expect("stored row");
+    let stored_payload: String = row.get("payload_json");
+    assert!(!stored_payload.contains(marker));
+
+    let fetched = port
+        .get_event(&published.event_id)
+        .await
+        .expect("get event")
+        .expect("event");
+    assert_eq!(fetched.payload_json, published.payload_json);
+
+    let mut stream = port.subscribe("testkit.ciphertext".into(), None, Some(0));
+    let received = tokio::time::timeout(Duration::from_secs(5), stream.next())
+        .await
+        .expect("subscribe timeout")
+        .expect("stream ended")
+        .expect("event");
+    assert_eq!(received.payload_json, published.payload_json);
 }
 
 #[tokio::test]

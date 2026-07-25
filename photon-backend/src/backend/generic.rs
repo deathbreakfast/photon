@@ -11,6 +11,7 @@ use super::capabilities::BackendCapabilities;
 use super::context::BackendContext;
 use super::photon_backend::PhotonBackend;
 use crate::error::Result;
+use crate::input::{validate_payload_size, validate_topic_name};
 use crate::models::Event;
 use crate::publish_routing::resolve_publish_target;
 use crate::registry::TopicRegistry;
@@ -89,6 +90,8 @@ impl PhotonBackend for GenericPhotonBackend {
         actor_json: Value,
         payload_json: Value,
     ) -> Result<String> {
+        validate_topic_name(topic_name)?;
+        validate_payload_size(&payload_json)?;
         let target = resolve_publish_target(&self.registry, topic_name, topic_key, &payload_json);
         let event = self
             .port
@@ -108,6 +111,9 @@ impl PhotonBackend for GenericPhotonBackend {
         topic_key_filter: Option<String>,
         after_seq: Option<i64>,
     ) -> Pin<Box<dyn Stream<Item = Result<Event>> + Send>> {
+        if let Err(error) = validate_topic_name(&topic_name) {
+            return Box::pin(futures::stream::once(async move { Err(error) }));
+        }
         self.port.subscribe(topic_name, topic_key_filter, after_seq)
     }
 

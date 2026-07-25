@@ -116,6 +116,7 @@ mod tests {
             sync_ack: true,
             max_inflight: 1,
             topic_shards: 1,
+            transport_security: photon_backend::BrokerTransportSecurity::AllowInsecurePlaintext,
         };
         assert_eq!(kafka_topic_for(&config, 0, "orders"), "photon.orders");
     }
@@ -134,6 +135,7 @@ mod tests {
             sync_ack: true,
             max_inflight: 1,
             topic_shards: 4,
+            transport_security: photon_backend::BrokerTransportSecurity::AllowInsecurePlaintext,
         };
         assert_eq!(kafka_topic_for(&config, 2, "orders"), "photon-s.2.orders");
     }

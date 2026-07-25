@@ -106,8 +106,10 @@ pub trait StoragePort: Send + Sync {
     /// # Contract
     ///
     /// - Assigns a monotonically increasing `seq` per `(topic_name, topic_key)` partition.
-    /// - Returns the persisted [`Event`] including stable `event_id`.
-    /// - Payload and actor JSON are opaque to the adapter (encryption happens above the port).
+    /// - Persists a sealed envelope; actor and payload plaintext must not be written to storage or
+    ///   broker records.
+    /// - Returns a decrypted [`Event`] including stable `event_id`, suitable for API callers and
+    ///   live fanout.
     async fn append(
         &self,
         topic_name: &str,
@@ -153,7 +155,8 @@ pub trait StoragePort: Send + Sync {
     ///
     /// # Contract
     ///
-    /// - `last_seq` is monotonic per subscription partition; adapters may reject regressions.
+    /// - Stored `last_seq` is monotonic per subscription partition: a regressive commit must not
+    ///   lower an existing checkpoint.
     async fn commit_checkpoint(
         &self,
         subscription_name: &str,

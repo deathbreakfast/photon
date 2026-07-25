@@ -14,7 +14,7 @@
 //! - **Same API everywhere** — `publish_on` / `start_executor` whether you run one process or many
 //! - **Pluggable storage** — `mem`, `sqlite`, or broker adapters (`nats`, `kafka`, `fluvio`)
 //! - **Durable subscriptions** — checkpointed replay after restart on durable adapters
-//! - **Host-owned crypto** — `PHOTON_TRANSPORT_KEY` encrypts envelopes before they hit storage
+//! - **Host-owned crypto** — `PHOTON_TRANSPORT_KEY` seals envelopes, keeping ciphertext at rest
 //!
 //! *Typed pub/sub over a persistent event log — pick embedded or brokered topology.*
 //!
@@ -248,6 +248,11 @@
 //! ## Notes
 //!
 //! - **Transport key:** boot fails closed without a valid `PHOTON_TRANSPORT_KEY` (see [`config`]).
+//!   Actor/payload JSON is sealed before storage and broker write; handlers receive decrypted events.
+//! - **Host responsibilities:** Photon is a trusted-host library — authenticate and authorize at the
+//!   process edge before publish/subscribe/admin/WS. See repository `SECURITY.md` (privileged handle,
+//!   no in-core topic ACL, production identity factory, broker TLS via `BrokerTransportSecurity` /
+//!   `PHOTON_ALLOW_INSECURE_BROKER`, never `PHOTON_ALLOW_DEV_TRANSPORT_KEY` in production).
 //! - **Durable multi-process:** use a broker adapter; `mem` does not cross process boundaries.
 //! - **Lab topologies:** testkit / bench `PHOTON_TOPOLOGY` values are harness labels — not the
 //!   Mode 1 / Mode 2 product choices above.

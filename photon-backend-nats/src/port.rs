@@ -6,7 +6,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use futures::stream::Stream;
 use photon_backend::models::Event;
-use photon_backend::{PhotonError, Result, StorageCapabilities, StoragePort};
+use photon_backend::{
+    seal_event_for_storage, PhotonError, Result, StorageCapabilities, StoragePort,
+};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -78,7 +80,7 @@ impl NatsStoragePort {
     }
 
     async fn connect_with_config(config: NatsConfig) -> Result<Self> {
-        let client = connect_nats(&config.url).await?;
+        let client = connect_nats(&config.url, config.transport_security).await?;
         let jetstream = async_nats::jetstream::new(client);
         ensure_streams(&jetstream, &config).await?;
         let checkpoint_store = CheckpointStore::connect(&jetstream, &config).await?;
@@ -117,8 +119,7 @@ impl StoragePort for NatsStoragePort {
         actor_json: Value,
         payload_json: Value,
     ) -> Result<Event> {
-        let _ = self.config.crypto.encrypt(&actor_json, &payload_json)?;
-        let mut event = Event {
+        let event = Event {
             event_id: Uuid::new_v4().to_string(),
             topic_name: topic_name.to_string(),
             topic_key: topic_key.map(String::from),
@@ -127,11 +128,12 @@ impl StoragePort for NatsStoragePort {
             payload_json,
             created_at: Utc::now(),
         };
+        let (mut plain, sealed) = seal_event_for_storage(&self.config.crypto, event)?;
 
-        let routing = publish_routing_key(topic_key, &event.event_id);
+        let routing = publish_routing_key(topic_key, &plain.event_id);
         let shard = pick_shard(&routing, self.config.stream_shards);
         let subject = photon_subject_for(shard, self.config.stream_shards, topic_name);
-        let (headers, body) = encode_event(&event)?;
+        let (headers, body) = encode_event(&sealed)?;
         let stream_seq = self
             .pipeline
             .publish(&self.jetstream, subject, Some(headers), body)
@@ -140,7 +142,7 @@ impl StoragePort for NatsStoragePort {
         if self.config.replay_cursor == ReplayCursor::StreamSeq {
             if let Some(seq) = stream_seq {
                 let local = i64::try_from(seq).unwrap_or(i64::MAX);
-                event.seq = if self.config.is_sharded() {
+                plain.seq = if self.config.is_sharded() {
                     composite_seq(shard, seq)
                 } else {
                     local
@@ -148,7 +150,7 @@ impl StoragePort for NatsStoragePort {
             }
         }
 
-        Ok(event)
+        Ok(plain)
     }
 
     fn subscribe(
