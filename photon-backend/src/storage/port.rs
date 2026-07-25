@@ -94,7 +94,7 @@ impl StorageCapabilities {
 /// # }
 /// ```
 ///
-/// Install at boot via the facade [`PhotonBuilder`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html).
+/// Install at boot via the public crate [`PhotonBuilder`](https://docs.rs/uf-photon/latest/photon/struct.PhotonBuilder.html).
 /// Host walkthrough: [Integrating the host](https://docs.rs/uf-photon/latest/photon/#integrating-the-host).
 #[async_trait]
 pub trait StoragePort: Send + Sync {

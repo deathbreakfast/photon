@@ -1,4 +1,4 @@
-//! Build script for the photon facade (stub codegen placeholder).
+//! Build script for the photon crate (stub codegen placeholder).
 
 fn main() {
     let out_dir = match std::env::var("OUT_DIR") {
@@ -7,7 +7,7 @@ fn main() {
     };
     if let Err(e) = std::fs::write(
         out_dir.join("generated_models.rs"),
-        "// Photon facade — ops metadata codegen lives in integration hosts\n",
+        "// Photon public crate — ops metadata codegen lives in integration hosts\n",
     ) {
         panic!("write stub generated_models.rs: {e}");
     }

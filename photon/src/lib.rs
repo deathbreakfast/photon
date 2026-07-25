@@ -1,4 +1,4 @@
-//! Pub/sub event pipeline facade.
+//! Pub/sub event pipeline (public crate).
 //!
 //! Typed topics, durable subscriptions with checkpoints, and the same API in single-process and
 //! multi-node deployments. Enable the `runtime` feature for the full stack (`Photon`, backends,

@@ -42,10 +42,10 @@ Central index for compile-time options, cross-cutting environment variables, and
 |---------|---------|
 | `runtime` | Full stack (`Photon`, backends, executor). |
 | `mem` | In-process [`InProcStoragePort`](../../photon_backend/storage/struct.InProcStoragePort.html) (dev/tests). |
-| `sqlite` | Embedded `SQLite` adapter (optional facade re-export). |
-| `nats` | NATS `JetStream` adapter (optional facade re-export). |
-| `kafka` | Kafka adapter (optional facade re-export). |
-| `fluvio` | Fluvio adapter (optional facade re-export). |
+| `sqlite` | Embedded `SQLite` adapter (optional public crate re-export). |
+| `nats` | NATS `JetStream` adapter (optional public crate re-export). |
+| `kafka` | Kafka adapter (optional public crate re-export). |
+| `fluvio` | Fluvio adapter (optional public crate re-export). |
 
 Default: **none** — enable `runtime` + `mem` explicitly for evaluation.
 
@@ -195,6 +195,6 @@ CLI reference: `photon-bench/EXPERIMENTS.md`, `photon-bench/src/cli.rs`.
 |----------|----------|
 | `cargo doc -p uf-photon --features runtime,mem --open` | **Primary** API + configuration (`photon::config`) |
 | `README.md` | Landing, model, FAQ |
-| `photon/README.md` | Facade features and wiring checklist |
+| `photon/README.md` | Public crate features and wiring checklist |
 | [`macro-expansion.md`](../../docs/macro-expansion.md) | What `#[topic]` / `#[subscribe]` generate |
 | `docs/adr/001-consumer-groups.md` | Consumer group architecture |

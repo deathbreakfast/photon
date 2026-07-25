@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: cargo check (uf-photon facade)
+      - name: cargo check (uf-photon public crate)
         run: cargo check -p uf-photon --features runtime,mem
 
   deny:
@@ -214,7 +214,7 @@ jobs:
         env:
           RUSTDOCFLAGS: "-D warnings"
         run: cargo doc --workspace --no-deps --all-features
-      - name: cargo test --doc (facade + runtime + macros + backend)
+      - name: cargo test --doc (public crate + runtime + macros + backend)
         run: |
           cargo test -p uf-photon --doc --features runtime,mem
           cargo test -p photon-runtime --doc --features runtime,mem

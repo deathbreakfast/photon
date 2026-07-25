@@ -1,4 +1,4 @@
-//! Serde DTOs for host ops introspection (JSON mapping in product facades).
+//! Serde DTOs for host ops introspection (JSON mapping in product packages).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

@@ -102,7 +102,7 @@ tracing = "0.1"
 anyhow = "1"
 ```
 
-Enable features explicitly — the facade ships with **no default features** (`default = []`).
+Enable features explicitly — the public crate ships with **no default features** (`default = []`).
 
 **Default wiring:** `Photon::builder()` installs [`InProcStoragePort`](photon-backend/src/storage/in_proc.rs) (`mem` tier) automatically.
 

@@ -2,7 +2,7 @@
 //!
 //! Wraps Kafka consumer groups, checkpoint persistence, and topic sharding behind the shared
 //! storage contract. Enable via the `kafka` feature on the
-//! [`photon`](https://docs.rs/uf-photon/latest/photon/) facade.
+//! [`photon`](https://docs.rs/uf-photon/latest/photon/) public crate.
 //!
 //! Connection and topic options: [`KafkaConfig`] and [`KafkaStoragePortBuilder`]
 //! (builder methods + env fallbacks documented on the builder).

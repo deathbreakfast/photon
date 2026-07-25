@@ -11,8 +11,8 @@ When you change public API behavior, configuration defaults, or wiring steps:
 
 ### Style
 
-- Organize facade docs by **task** (boot, topics, backend development), not reader personas.
-- Put full code snippets on the item that owns the API; the facade documentation map links without duplicating.
+- Organize public crate docs by **task** (boot, topics, backend development), not reader personas.
+- Put full code snippets on the item that owns the API; the public crate documentation map links without duplicating.
 - Use `# Contract` subsections on trait methods for semantics (empty input, monotonicity, no-op defaults).
 - Backend adapter crate docs should link to their `*StoragePortBuilder` rustdoc; cross-cutting env vars stay in [`photon::config`](https://docs.rs/uf-photon/latest/photon/config/index.html).
 

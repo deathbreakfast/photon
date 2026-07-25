@@ -14,7 +14,7 @@
 //! - Canonical system-of-record datastore (transport log is encrypted and transient)
 //! - Ops/admin UI (hosts provide their own)
 //!
-//! Facade documentation map: `cargo doc -p uf-photon --features runtime,mem --open`.
+//! Public crate documentation map: `cargo doc -p uf-photon --features runtime,mem --open`.
 
 #![cfg(feature = "runtime")]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]

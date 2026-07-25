@@ -2,7 +2,7 @@
 //!
 //! Wraps `JetStream` consumer groups, checkpoint persistence, and stream sharding behind the shared
 //! storage contract. Enable via the `nats` feature on the
-//! [`photon`](https://docs.rs/uf-photon/latest/photon/) facade.
+//! [`photon`](https://docs.rs/uf-photon/latest/photon/) public crate.
 //!
 //! Connection and stream options: [`NatsConfig`] and [`NatsStoragePortBuilder`]
 //! (builder methods + env fallbacks documented on the builder).

@@ -23,7 +23,7 @@ cargo check --workspace --features runtime,mem
 # Workspace API docs (fail on rustdoc warnings)
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 
-# Facade-only docs (quick check)
+# Public-crate-only docs (quick check)
 RUSTDOCFLAGS="-D warnings" cargo doc -p uf-photon --features runtime,mem --no-deps
 
 # Doctests (rust,no_run compile-checked)
@@ -32,7 +32,7 @@ cargo test -p photon-runtime --doc --features runtime,mem
 cargo test -p photon-macros --doc
 cargo test -p photon-backend --doc --features runtime
 
-# Examples on the facade (need PHOTON_TRANSPORT_KEY — smoke scripts export it)
+# Examples on the public crate (need PHOTON_TRANSPORT_KEY — smoke scripts export it)
 cargo run -p uf-photon --example embedded_mem --features runtime,mem
 cargo run -p uf-photon --example consumer_group --features runtime,mem
 cargo run -p uf-photon --example manual_subscribe --features runtime,mem
@@ -65,7 +65,7 @@ Download `coverage-lcov` from the GitHub Actions run artifacts for the CI report
 
 - Workspace `[workspace.lints.rust] missing_docs = "deny"`; library members use `[lints] workspace = true`. Test/bench crates (`photon-e2e`, `photon-testkit`, `photon-bench`) declare matching Clippy tables so they can allow `unwrap_used` / `expect_used`.
 - Restriction lints (`unwrap_used`, `expect_used`, `dbg_macro`, `print_*`, `todo`) are enforced at the workspace level — see [`CONTRIBUTING.md`](../CONTRIBUTING.md#rust-standards--lint-policy).
-- Lane map on facade: **Creating topics** / **Integrating the host** / **Developing the backend**
+- Lane map on public crate: **Creating topics** / **Integrating the host** / **Developing the backend**
 - Config reference: `photon::config` includes `docs/configuration.md`
 - Macro expansion: `docs/macro-expansion.md`
 - Examples: `photon/examples/` via `[[example]]` (`cargo run -p uf-photon --example …`)

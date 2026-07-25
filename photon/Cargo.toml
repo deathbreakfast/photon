@@ -2,7 +2,7 @@
 name = "uf-photon"
 version = "0.1.1"
 edition = "2021"
-description = "Pub/sub event pipeline facade — composable storage adapters"
+description = "Pub/sub event pipeline (public crate) — composable storage adapters"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true

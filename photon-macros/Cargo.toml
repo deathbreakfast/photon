@@ -19,7 +19,7 @@ syn = { version = "2.0", features = ["full", "extra-traits"] }
 quote = "1.0"
 proc-macro2 = "1.0"
 
-# No [dev-dependencies] on uf-photon: that would block `cargo publish` before the facade
+# No [dev-dependencies] on uf-photon: that would block `cargo publish` before the public crate
 # exists on crates.io. Usage examples below are `ignore`d; runnable coverage lives in
 # uf-photon / photon-e2e.
 
