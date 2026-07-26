@@ -1,5 +1,7 @@
 //! Boundary validation and safe endpoint formatting.
 
+use std::fmt;
+
 use serde_json::Value;
 
 use crate::{PhotonError, Result};
@@ -82,6 +84,53 @@ fn redact_single_endpoint(endpoint: &str) -> String {
     )
 }
 
+/// Length of a URL-like prefix starting at `s` (scheme through host/path until whitespace).
+fn consume_endpoint_prefix(s: &str) -> usize {
+    let Some(scheme_end) = s.find("://") else {
+        return s.len();
+    };
+    let after_scheme = scheme_end + 3;
+    let rest = &s[after_scheme..];
+    let end_rel = rest
+        .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ')' || c == ']')
+        .unwrap_or(rest.len());
+    after_scheme + end_rel
+}
+
+/// Redact `scheme://userinfo@host` substrings embedded in free-form error text.
+#[must_use]
+pub fn redact_credentials_in_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < text.len() {
+        if let Some(rel) = text[i..].find("://") {
+            let abs = i + rel;
+            let scheme_start = text[..abs]
+                .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '+' || c == '.' || c == '-'))
+                .map_or(i, |j| j + 1);
+            out.push_str(&text[i..scheme_start]);
+            let consumed = consume_endpoint_prefix(&text[scheme_start..]);
+            let endpoint = &text[scheme_start..scheme_start + consumed];
+            out.push_str(&redact_endpoint(endpoint));
+            i = scheme_start + consumed;
+        } else {
+            out.push_str(&text[i..]);
+            break;
+        }
+    }
+    out
+}
+
+/// Broker connect failure labeled with a redacted endpoint and redacted source text.
+///
+/// `label` is a short prefix such as `"nats connect"` or `"nats credentials file"`.
+/// Use for all adapter connect paths so URL userinfo never lands in error labels or sources.
+#[must_use]
+pub fn map_broker_connect_err(label: &str, endpoint: &str, err: impl fmt::Display) -> PhotonError {
+    let detail = redact_credentials_in_text(&err.to_string());
+    PhotonError::caused(format!("{label} {}", redact_endpoint(endpoint)), detail)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,5 +178,51 @@ mod tests {
         let redacted = redact_endpoint("nats://user:secret@host:4222");
         assert_eq!(redacted, "nats://***@host:4222");
         assert!(!redacted.contains("secret"));
+    }
+
+    #[test]
+    fn leaves_urls_without_userinfo() {
+        assert_eq!(
+            redact_endpoint("nats://127.0.0.1:4222"),
+            "nats://127.0.0.1:4222"
+        );
+    }
+
+    #[test]
+    fn redacts_embedded_url_in_error_text() {
+        let raw = "connection failed: nats://u:p@localhost:4222 refused";
+        let redacted = redact_credentials_in_text(raw);
+        assert!(redacted.contains("nats://***@localhost:4222"));
+        assert!(!redacted.contains("u:p@"));
+    }
+
+    #[test]
+    fn map_broker_connect_err_redacts_label_and_source() {
+        let err = map_broker_connect_err(
+            "nats connect",
+            "nats://user:secret@host:4222",
+            "dial nats://user:secret@host:4222 timed out",
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("nats connect nats://***@host:4222"),
+            "msg: {msg}"
+        );
+        assert!(!msg.contains("secret"), "msg: {msg}");
+        let source = std::error::Error::source(&err)
+            .expect("caused keeps source")
+            .to_string();
+        assert!(!source.contains("secret"), "source: {source}");
+        assert!(source.contains("nats://***@host:4222"), "source: {source}");
+    }
+
+    #[test]
+    fn map_broker_connect_err_sad_path_still_surfaces_failure() {
+        let err = map_broker_connect_err("kafka connect", "plain-host:9092", "broker down");
+        assert!(err.to_string().contains("kafka connect plain-host:9092"));
+        let source = std::error::Error::source(&err)
+            .expect("caused keeps source")
+            .to_string();
+        assert!(source.contains("broker down"));
     }
 }

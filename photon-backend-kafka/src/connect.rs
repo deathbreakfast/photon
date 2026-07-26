@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use photon_backend::{redact_endpoint, PhotonError, Result};
+use photon_backend::{map_broker_connect_err, PhotonError, Result};
 use rskafka::client::Client;
 use rskafka::client::ClientBuilder;
 
@@ -26,12 +26,10 @@ pub async fn connect_kafka(config: &KafkaConfig) -> Result<SharedClient> {
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .collect();
-    let client = ClientBuilder::new(brokers).build().await.map_err(|e| {
-        PhotonError::caused(
-            format!("kafka connect {}", redact_endpoint(&config.brokers)),
-            e,
-        )
-    })?;
+    let client = ClientBuilder::new(brokers)
+        .build()
+        .await
+        .map_err(|e| map_broker_connect_err("kafka connect", &config.brokers, e))?;
     Ok(Arc::new(client))
 }
 

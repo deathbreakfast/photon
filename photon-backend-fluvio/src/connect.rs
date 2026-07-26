@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use fluvio::{Fluvio, FluvioClusterConfig};
-use photon_backend::{redact_endpoint, PhotonError, Result};
+use photon_backend::{map_broker_connect_err, PhotonError, Result};
 
 use crate::config::FluvioConfig;
 
@@ -21,12 +21,7 @@ pub async fn connect_fluvio(config: &FluvioConfig) -> Result<SharedClient> {
     let cluster_config = FluvioClusterConfig::new(config.endpoint.clone());
     let client = Fluvio::connect_with_config(&cluster_config)
         .await
-        .map_err(|e| {
-            PhotonError::caused(
-                format!("fluvio connect {}", redact_endpoint(&config.endpoint)),
-                e,
-            )
-        })?;
+        .map_err(|e| map_broker_connect_err("fluvio connect", &config.endpoint, e))?;
     Ok(Arc::new(client))
 }
 

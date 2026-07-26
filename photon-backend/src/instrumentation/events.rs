@@ -4,17 +4,14 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
 
+use crate::sanitize::sanitize_error_message;
+
 use super::labels::FailureReason;
 
-const MAX_ERROR_LEN: usize = 512;
-
-/// Truncate an error message to the ops-log field limit.
+/// Sanitize and truncate an error message for ops-log / DLQ fields.
+#[must_use]
 pub fn truncate_error(message: &str) -> String {
-    if message.len() <= MAX_ERROR_LEN {
-        message.to_string()
-    } else {
-        format!("{}…", &message[..MAX_ERROR_LEN.saturating_sub(1)])
-    }
+    sanitize_error_message(message)
 }
 
 /// Build JSON fields for a `photon_dlq` ops-log event.
@@ -120,4 +117,36 @@ pub fn log_ops(
         "photon_ops_log",
         &ops_log_fields(component, operation, message, topic, subscription, error),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::instrumentation::FailureReason;
+
+    #[test]
+    fn dlq_fields_sanitizes_error_happy_path() {
+        let fields = dlq_fields(
+            "e1",
+            "t",
+            None,
+            1,
+            Some("sub"),
+            FailureReason::HandlerError,
+            "failed password=hunter2",
+        );
+        let err = fields["error"].as_str().expect("error field");
+        assert!(err.contains("[redacted]"));
+        assert!(!err.contains("hunter2"));
+        assert!(fields.get("actor_json").is_none());
+        assert!(fields.get("payload_json").is_none());
+    }
+
+    #[test]
+    fn truncate_error_caps_length_sad_path() {
+        let long = "y".repeat(800);
+        let out = truncate_error(&long);
+        assert!(out.ends_with('…'));
+        assert!(out.chars().count() <= crate::MAX_ERROR_MESSAGE_CHARS + 1);
+    }
 }

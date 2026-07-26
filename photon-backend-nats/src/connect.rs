@@ -1,6 +1,6 @@
 //! NATS client connection helpers.
 
-use photon_backend::{redact_endpoint, BrokerTransportSecurity, PhotonError, Result};
+use photon_backend::{map_broker_connect_err, BrokerTransportSecurity, PhotonError, Result};
 
 /// Connect to one or more NATS servers (`PHOTON_NATS_URL` may be comma-separated).
 ///
@@ -9,7 +9,7 @@ use photon_backend::{redact_endpoint, BrokerTransportSecurity, PhotonError, Resu
 /// # Errors
 ///
 /// Returns an error when the security policy rejects the endpoint, credentials cannot be loaded,
-/// or connection fails. Error labels redact URL userinfo via [`redact_endpoint`].
+/// or connection fails. Error labels redact URL userinfo via [`map_broker_connect_err`].
 pub async fn connect_nats(
     urls: &str,
     security: BrokerTransportSecurity,
@@ -32,14 +32,12 @@ pub async fn connect_nats(
         opts = opts.require_tls(true);
     }
     if let Some(path) = credentials_file {
-        opts = opts.credentials_file(path).await.map_err(|e| {
-            PhotonError::caused(
-                format!("nats credentials file {}", redact_endpoint(path)),
-                e,
-            )
-        })?;
+        opts = opts
+            .credentials_file(path)
+            .await
+            .map_err(|e| map_broker_connect_err("nats credentials file", path, e))?;
     }
     opts.connect(servers)
         .await
-        .map_err(|e| PhotonError::caused(format!("nats connect {}", redact_endpoint(urls)), e))
+        .map_err(|e| map_broker_connect_err("nats connect", urls, e))
 }

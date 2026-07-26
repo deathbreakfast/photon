@@ -1,8 +1,11 @@
 //! Compose [`AdminSnapshot`] from registries and storage checkpoint reads.
+//!
+//! Snapshots are metadata-only (topics, handlers, checkpoints). They never include
+//! event `actor_json` / `payload_json` or raw DLQ error bodies.
 
 use photon_backend::{
-    shard_storage_key, BackendCapabilities, HandlerDescriptor, HandlerRegistry, ShardConfig,
-    TopicDescriptor,
+    redact_credentials_in_text, sanitize_error_message, shard_storage_key, BackendCapabilities,
+    HandlerDescriptor, HandlerRegistry, PhotonError, ShardConfig, TopicDescriptor,
 };
 
 use crate::Photon;
@@ -16,12 +19,14 @@ use super::types::{
 ///
 /// # Errors
 ///
-/// Returns an error if a checkpoint load fails.
+/// Returns an error if a checkpoint load fails. Error text is sanitized before return.
 pub async fn collect_admin_snapshot(photon: &Photon) -> photon_backend::Result<AdminSnapshot> {
     let topics = collect_topics(photon);
     let handlers = collect_handlers();
     let backend = collect_backend(photon.backend_capabilities());
-    let checkpoints = collect_checkpoints(photon).await?;
+    let checkpoints = collect_checkpoints(photon)
+        .await
+        .map_err(|e| sanitize_admin_error(&e))?;
 
     Ok(AdminSnapshot {
         backend,
@@ -29,6 +34,12 @@ pub async fn collect_admin_snapshot(photon: &Photon) -> photon_backend::Result<A
         handlers,
         checkpoints,
     })
+}
+
+fn sanitize_admin_error(err: &PhotonError) -> PhotonError {
+    PhotonError::Internal(sanitize_error_message(&redact_credentials_in_text(
+        &err.to_string(),
+    )))
 }
 
 fn collect_topics(photon: &Photon) -> Vec<AdminTopicSummary> {
@@ -131,4 +142,27 @@ fn group_shard_count(photon: &Photon, handler: &'static HandlerDescriptor) -> u3
                 .map(|c| c.shard_count)
         })
         .unwrap_or(ShardConfig::DEFAULT_SHARD_COUNT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_admin_error_redacts_secrets_happy_path() {
+        let err = PhotonError::Internal(
+            "checkpoint load failed password=hunter2 nats://u:p@host:4222".into(),
+        );
+        let safe = sanitize_admin_error(&err).to_string();
+        assert!(safe.contains("[redacted]"), "safe: {safe}");
+        assert!(!safe.contains("hunter2"), "safe: {safe}");
+        assert!(!safe.contains("u:p@"), "safe: {safe}");
+    }
+
+    #[test]
+    fn sanitize_admin_error_preserves_benign_detail_sad_path() {
+        let err = PhotonError::Internal("checkpoint missing".into());
+        let safe = sanitize_admin_error(&err).to_string();
+        assert!(safe.contains("checkpoint missing"), "safe: {safe}");
+    }
 }

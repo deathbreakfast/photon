@@ -4,6 +4,7 @@ use chrono::Utc;
 
 use crate::error::Result;
 use crate::instrumentation::{dlq_fields, record_handler_failure, FailureReason};
+use crate::sanitize::sanitize_error_message;
 use photon_telemetry::ops_log;
 
 /// Metadata-only DLQ record shape.
@@ -64,7 +65,9 @@ impl DlqSink {
     ///
     /// Returns an error if the operation fails.
     pub fn record(&self, params: &DlqRecordParams<'_>) -> Result<()> {
+        let safe_error = sanitize_error_message(&params.error);
         record_handler_failure(params.topic_name, params.reason);
+        // Metadata only — never log actor_json / payload_json here.
         tracing::warn!(
             event_id = params.event_id,
             topic = params.topic_name,
@@ -72,7 +75,7 @@ impl DlqSink {
             seq = params.seq,
             subscription = ?params.subscription_name,
             reason = ?params.reason,
-            error = %params.error,
+            error = %safe_error,
             "handler delivery failed; recorded to DLQ"
         );
         {
@@ -86,7 +89,7 @@ impl DlqSink {
                 topic_key: params.topic_key.map(String::from),
                 seq: params.seq,
                 subscription_name: params.subscription_name.map(String::from),
-                error: params.error.clone(),
+                error: safe_error.clone(),
                 attempt: 1,
                 recorded_at: Utc::now(),
             });
@@ -100,7 +103,7 @@ impl DlqSink {
                 params.seq,
                 params.subscription_name,
                 params.reason,
-                &params.error,
+                &safe_error,
             ),
         );
         Ok(())
@@ -175,5 +178,43 @@ mod tests {
         assert_eq!(sink.min_seq_for("orders.created", Some("carol")), None);
         assert_eq!(sink.min_seq_for("other.topic", Some("alice")), None);
         assert_eq!(sink.min_seq_for("orders.created", None), None);
+    }
+
+    #[test]
+    fn record_sanitizes_secret_prefixes_in_error() {
+        let sink = DlqSink::new();
+        sink.record(&DlqRecordParams {
+            event_id: "evt-1",
+            topic_name: "orders.created",
+            topic_key: None,
+            seq: 1,
+            subscription_name: Some("worker-a"),
+            reason: FailureReason::HandlerError,
+            error: "boom password=hunter2 leftover".into(),
+        })
+        .expect("record");
+        let guard = sink.records.lock().expect("lock");
+        let err = &guard[0].error;
+        assert!(err.contains("[redacted]"), "err: {err}");
+        assert!(!err.contains("hunter2"), "err: {err}");
+    }
+
+    #[test]
+    fn record_truncates_oversized_error() {
+        let sink = DlqSink::new();
+        let long = "x".repeat(800);
+        sink.record(&DlqRecordParams {
+            event_id: "evt-1",
+            topic_name: "orders.created",
+            topic_key: None,
+            seq: 1,
+            subscription_name: None,
+            reason: FailureReason::HandlerError,
+            error: long,
+        })
+        .expect("record");
+        let guard = sink.records.lock().expect("lock");
+        assert!(guard[0].error.ends_with('…'));
+        assert!(guard[0].error.chars().count() <= crate::MAX_ERROR_MESSAGE_CHARS + 1);
     }
 }

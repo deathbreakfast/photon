@@ -39,6 +39,7 @@ pub mod models;
 pub mod publish_routing;
 pub mod registry;
 pub mod retention;
+pub mod sanitize;
 pub mod shard_router;
 pub mod storage;
 
@@ -60,8 +61,8 @@ pub use handler_ctx::HandlerCtx;
 pub use handler_descriptor::HandlerDescriptor;
 pub use handler_registry::HandlerRegistry;
 pub use input::{
-    redact_endpoint, validate_payload_size, validate_topic_name, MAX_PAYLOAD_JSON_BYTES,
-    MAX_TOPIC_NAME_BYTES,
+    map_broker_connect_err, redact_credentials_in_text, redact_endpoint, validate_payload_size,
+    validate_topic_name, MAX_PAYLOAD_JSON_BYTES, MAX_TOPIC_NAME_BYTES,
 };
 pub use models::{
     Envelope, Event, GroupOpts, SubscribeOpts, Subscription, SubscriptionHandle, SubscriptionMode,
@@ -73,6 +74,7 @@ pub use retention::{
     ReclaimReport, RetentionDeps, RetentionHook, RetentionPolicy, RetentionReclaimer,
     SubscriptionPartition, TopicPartition,
 };
+pub use sanitize::{sanitize_error_message, MAX_ERROR_MESSAGE_CHARS};
 pub use shard_router::{
     group_publish_storage_key, is_shard_storage_key, parse_shard_storage_key, routing_key,
     shard_id, shard_storage_key, SHARD_KEY_PREFIX,

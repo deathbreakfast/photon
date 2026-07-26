@@ -21,30 +21,11 @@ Include:
 
 We will acknowledge receipt as soon as practical and coordinate a fix and disclosure timeline with you.
 
-## Threat model (library)
-
-Photon is an **embeddable trusted-host** messaging library. Holding a `Photon` handle is fully privileged: the core does **not** enforce session authn, topic ACLs, or multi-tenant isolation.
-
-### What Photon provides
-
-- Transport envelope cryptography for actor/payload at rest and on the wire (`__photon_envelope_v1`)
-- Fail-closed transport key loading (`PHOTON_TRANSPORT_KEY`)
-- Broker connect policy that rejects plaintext endpoints unless explicitly opted in
-- Topic/payload input bounds and NATS wildcard rejection
-- Monotonic checkpoint commits
-- Credential redaction in connect error labels
-- Fluvio topic-name collision avoidance (reversible escape)
-- Fluvio retention applied at topic create; NATS stream `max_age` applied at stream create
-
-### What the host must supply
-
-Session/JWT auth, topic ACLs, tenant binding, CSRF for server functions, CORS/security headers, TLS termination at the HTTP edge, broker ACLs, and product linking/authorization. See [Production checklist for implementers](#production-checklist-for-implementers).
-
-Browser WebSocket Origin policy lives in **photon-leptos** / **photon-axum** (default rejects all Origins; hosts allowlist).
-
 ## Production checklist for implementers
 
-Use this when deploying any process that constructs a `Photon` handle or exposes Photon-backed APIs.
+Photon is an **embeddable trusted-host** messaging library. Holding a `Photon` handle is fully privileged: the core does **not** enforce session authn, topic ACLs, or multi-tenant isolation. Hosts supply session/JWT auth, topic ACLs, tenant binding, CSRF, CORS/security headers, TLS at the HTTP edge, broker ACLs, and product authorization.
+
+Browser WebSocket Origin policy lives in **photon-leptos** / **photon-axum** (default rejects all Origins; hosts allowlist).
 
 ### Secrets and crypto
 
@@ -71,6 +52,7 @@ export PHOTON_TRANSPORT_KEY="$(openssl rand -base64 32)"
 | Do not map raw client input onto Photon APIs | Validate/allowlist topic, key, and payload at the host boundary |
 | Production identity factory | Do **not** use `JsonIdentityFactory`; reconstruct identity from trusted server-side session/JWT context |
 | Admin / DLQ / ops-log | Authz admin snapshot routes; avoid `ConsoleOpsLog` for sensitive workloads |
+| Errors | DLQ/ops-log/admin error strings are sanitized/truncated; connect errors redact URL userinfo. Do not embed actor/payload JSON in handler errors |
 
 Anti-pattern: accepting `?topic=` from the browser and calling `Photon::publish` / subscribe without a policy boundary.
 
@@ -114,9 +96,3 @@ See the photon-leptos `SECURITY.md` for Origin and demo/bench detail.
 |-------|-----|
 | Keep `cargo deny` green | CI runs advisories/licenses; do not re-add ignored Critical TLS advisories |
 | Pin adapter versions deliberately | Broker SDK bumps can change TLS defaults |
-
-## Scope
-
-In scope: vulnerabilities in this repository's published crates and documentation that could cause unsafe production defaults, plus CI/supply-chain issues in this repository.
-
-Out of scope: product-layer linking/authz (implemented by host applications such as UF Photon), and vulnerabilities solely in third-party dependencies unless this project mishandles them in a security-relevant way.
