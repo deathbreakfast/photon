@@ -55,6 +55,7 @@ impl ExecutorController {
     /// - Start is one-shot per controller; restart requires a new [`Photon`] build.
     /// - Outer loops respect [`Self::shutdown`]; in-flight handler tasks are awaited in
     ///   [`Self::join`].
+    #[tracing::instrument(name = "photon.executor.start", skip_all)]
     pub fn start(&self, photon: &Photon, identity: &Arc<dyn IdentityFactory>) -> Result<()> {
         if self
             .started

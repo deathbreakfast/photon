@@ -59,7 +59,7 @@ pub fn decode_record(record: &Record, offset: i64) -> Result<DecodedRecord> {
     let payload = record
         .value
         .as_deref()
-        .ok_or_else(|| PhotonError::Internal("kafka record missing payload".into()))?;
+        .ok_or_else(|| PhotonError::caused("kafka record missing payload", "value absent"))?;
     let mut event: Event = serde_json::from_slice(payload)
         .map_err(|e| PhotonError::caused("kafka decode event json:", e))?;
 
@@ -68,19 +68,19 @@ pub fn decode_record(record: &Record, offset: i64) -> Result<DecodedRecord> {
             HEADER_EVENT_ID => {
                 let header_id = String::from_utf8_lossy(value);
                 if !header_id.is_empty() && header_id != event.event_id {
-                    return Err(PhotonError::Internal(format!(
-                        "kafka event_id header mismatch: header={header_id} body={}",
-                        event.event_id
-                    )));
+                    return Err(PhotonError::caused(
+                        "kafka event_id header mismatch",
+                        format!("header={header_id} body={}", event.event_id),
+                    ));
                 }
             }
             HEADER_SEQ => {
                 if let Ok(header_seq) = String::from_utf8_lossy(value).parse::<i64>() {
                     if header_seq != event.seq && !(header_seq == 0 && event.seq == 0) {
-                        return Err(PhotonError::Internal(format!(
-                            "kafka seq header mismatch: header={header_seq} body={}",
-                            event.seq
-                        )));
+                        return Err(PhotonError::caused(
+                            "kafka seq header mismatch",
+                            format!("header={header_seq} body={}", event.seq),
+                        ));
                     }
                 }
             }

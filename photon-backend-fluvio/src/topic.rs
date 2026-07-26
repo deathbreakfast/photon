@@ -67,9 +67,10 @@ async fn create_topic_if_missing(
             {
                 // Fall through to readiness wait — create ack can race producer lookup.
             } else {
-                return Err(PhotonError::Internal(format!(
-                    "fluvio create topic {name}: {e}"
-                )));
+                return Err(PhotonError::caused(
+                    format!("fluvio create topic {name}"),
+                    e,
+                ));
             }
         }
     }
@@ -94,9 +95,10 @@ async fn wait_topic_visible(client: &SharedClient, name: &str) -> Result<()> {
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    Err(PhotonError::Internal(format!(
-        "fluvio topic {name} not visible after create"
-    )))
+    Err(PhotonError::caused(
+        format!("fluvio topic {name} not visible after create"),
+        "deadline exceeded",
+    ))
 }
 
 /// Warn when replication settings may limit ingress scaling.

@@ -2513,7 +2513,6 @@ dependencies = [
 name = "photon-runtime"
 version = "0.1.1"
 dependencies = [
- "anyhow",
  "futures",
  "photon-backend",
  "photon-telemetry",
@@ -4043,7 +4042,6 @@ dependencies = [
 name = "uf-photon-core"
 version = "0.1.1"
 dependencies = [
- "anyhow",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

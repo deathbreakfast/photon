@@ -75,6 +75,11 @@ impl CheckpointCoalescer {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
+    #[tracing::instrument(
+        name = "photon.checkpoint.record",
+        skip(self),
+        fields(subscription = %subscription_name, topic = %topic_name, seq)
+    )]
     pub async fn record(
         &self,
         subscription_name: &str,

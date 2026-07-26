@@ -10,7 +10,7 @@ use async_stream::stream;
 use futures::stream::{Stream as FuturesStream, StreamExt};
 use photon_backend::models::Event;
 use photon_backend::topic_filter_matches;
-use photon_backend::{open_stored_event, PhotonError, Result};
+use photon_backend::{open_stored_event, AbortOnDrop, PhotonError, Result};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -179,6 +179,7 @@ fn subscribe_merge_shards(
     Box::pin(stream! {
         let cursors = after_seq_by_shard(&config, &HashMap::new(), after_seq);
         let (tx, mut rx) = mpsc::channel::<Result<Event>>(256);
+        let mut aborts = AbortOnDrop::default();
         for shard in 0..shard_count {
             let local_after = cursors.get(&shard).copied().flatten();
             let mut sub = subscribe_single(
@@ -190,18 +191,20 @@ fn subscribe_merge_shards(
                 local_after,
             );
             let tx = tx.clone();
-            tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 while let Some(item) = sub.next().await {
                     if tx.send(item).await.is_err() {
                         break;
                     }
                 }
             });
+            aborts.push(handle.abort_handle());
         }
         drop(tx);
         while let Some(item) = rx.recv().await {
             yield item;
         }
+        drop(aborts);
     })
 }
 
@@ -224,9 +227,10 @@ fn subscribe_single(
         let stream = match jetstream.get_stream(&stream_name).await {
             Ok(stream) => stream,
             Err(e) => {
-                yield Err(PhotonError::Internal(format!(
-                    "nats get stream {stream_name}: {e}"
-                )));
+                yield Err(PhotonError::caused(
+                    format!("nats get stream {stream_name}"),
+                    e,
+                ));
                 return;
             }
         };
@@ -250,9 +254,10 @@ fn subscribe_single(
         let mut messages = match consumer.messages().await {
             Ok(messages) => messages,
             Err(e) => {
-                yield Err(PhotonError::Internal(format!(
-                    "nats consumer messages {filter_subject}: {e}"
-                )));
+                yield Err(PhotonError::caused(
+                    format!("nats consumer messages {filter_subject}"),
+                    e,
+                ));
                 return;
             }
         };

@@ -59,6 +59,9 @@ pub enum PhotonError {
     SubscriptionNameRequired,
 
     /// Persistence / store error (ops metadata adapters).
+    ///
+    /// Prefer [`PhotonError::persistence`] when an underlying store error exists.
+    #[deprecated(note = "use PhotonError::persistence(...) for sourced failures")]
     #[error("persistence error: {0}")]
     PersistenceError(String),
 
@@ -136,6 +139,15 @@ impl PhotonError {
 impl From<serde_json::Error> for PhotonError {
     fn from(err: serde_json::Error) -> Self {
         Self::PayloadError(err.to_string())
+    }
+}
+
+impl From<photon_core::IdentityError> for PhotonError {
+    fn from(err: photon_core::IdentityError) -> Self {
+        match err {
+            photon_core::IdentityError::InvalidActor(msg)
+            | photon_core::IdentityError::Factory(msg) => Self::Identity(msg),
+        }
     }
 }
 

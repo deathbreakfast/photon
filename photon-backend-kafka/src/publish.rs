@@ -67,10 +67,14 @@ impl PublishPipeline {
             drop(permit);
             Ok(Some(high_watermark))
         } else {
+            let topic = topic.to_string();
             tokio::spawn(async move {
-                let _ = partition_client
+                if let Err(e) = partition_client
                     .produce(vec![record], Compression::default())
-                    .await;
+                    .await
+                {
+                    tracing::warn!(error = %e, topic = %topic, "kafka async publish failed");
+                }
                 drop(permit);
             });
             Ok(None)

@@ -152,20 +152,20 @@ fn actor_binding_tokens(binding: &ActorBinding<'_>, actor_pat: &Pat) -> proc_mac
         ActorBinding::BoxDyn => quote! {
             let #actor_pat = identity
                 .reconstruct(&actor_json)
-                .map_err(|e| photon::PhotonError::Identity(e.to_string()))?;
+                .map_err(photon::PhotonError::from)?;
         },
         ActorBinding::ArcDyn => quote! {
             let #actor_pat: ::std::sync::Arc<dyn photon_core::Actor> =
                 ::std::sync::Arc::from(
                     identity
                         .reconstruct(&actor_json)
-                        .map_err(|e| photon::PhotonError::Identity(e.to_string()))?,
+                        .map_err(photon::PhotonError::from)?,
                 );
         },
         ActorBinding::BoxConcrete(concrete_ty) => quote! {
             let #actor_pat: ::std::boxed::Box<#concrete_ty> = identity
                 .reconstruct(&actor_json)
-                .map_err(|e| photon::PhotonError::Identity(e.to_string()))?
+                .map_err(photon::PhotonError::from)?
                 .into_any()
                 .downcast::<#concrete_ty>()
                 .map_err(|_| {
@@ -179,7 +179,7 @@ fn actor_binding_tokens(binding: &ActorBinding<'_>, actor_pat: &Pat) -> proc_mac
             let #actor_pat: ::std::sync::Arc<#concrete_ty> = ::std::sync::Arc::from(
                 identity
                     .reconstruct(&actor_json)
-                    .map_err(|e| photon::PhotonError::Identity(e.to_string()))?
+                    .map_err(photon::PhotonError::from)?
                     .into_any()
                     .downcast::<#concrete_ty>()
                     .map_err(|_| {
@@ -432,7 +432,7 @@ pub fn subscribe_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
                 let actor_json = event.actor_json.to_string();
                 #actor_bind
                 let payload: #event_ty = serde_json::from_value(event.payload_json.clone())
-                    .map_err(|e| photon::PhotonError::PayloadError(e.to_string()))?;
+                    .map_err(photon::PhotonError::from)?;
                 #(#injectable_binds)*
                 #fn_name(#actor_pat, payload, #(#call_extras),*).await
             })

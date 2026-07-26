@@ -8,7 +8,7 @@ pub enum IdentityError {
     /// JSON or policy rejected the actor payload.
     #[error("invalid actor: {0}")]
     InvalidActor(String),
-    /// Factory/backend failure.
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
+    /// Factory/backend failure (typed; no `anyhow` in the library API).
+    #[error("identity factory: {0}")]
+    Factory(String),
 }

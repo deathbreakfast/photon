@@ -171,9 +171,10 @@ async fn scan_checkpoint_topic(
                 }
             }
             Ok(Some(Err(e))) => {
-                return Err(PhotonError::Internal(format!(
-                    "fluvio checkpoint scan: {e:?}"
-                )));
+                return Err(PhotonError::caused(
+                    "fluvio checkpoint scan",
+                    format!("{e:?}"),
+                ));
             }
             Ok(None) | Err(_) => break,
         }

@@ -10,7 +10,7 @@ use fluvio::Offset;
 use futures::stream::{Stream as FuturesStream, StreamExt};
 use photon_backend::models::Event;
 use photon_backend::topic_filter_matches;
-use photon_backend::{open_stored_event, PhotonError, Result};
+use photon_backend::{open_stored_event, AbortOnDrop, PhotonError, Result};
 use tokio::sync::mpsc;
 
 use crate::checkpoint::CheckpointStore;
@@ -148,6 +148,7 @@ fn subscribe_merge_shards(
     Box::pin(stream! {
         let cursors = after_seq_by_shard(&config, &HashMap::new(), after_seq);
         let (tx, mut rx) = mpsc::channel::<Result<Event>>(256);
+        let mut aborts = AbortOnDrop::default();
         for shard in 0..shard_count {
             let local_after = cursors.get(&shard).copied().flatten();
             let mut sub = subscribe_single(
@@ -160,18 +161,20 @@ fn subscribe_merge_shards(
                 local_after,
             );
             let tx = tx.clone();
-            tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 while let Some(item) = sub.next().await {
                     if tx.send(item).await.is_err() {
                         break;
                     }
                 }
             });
+            aborts.push(handle.abort_handle());
         }
         drop(tx);
         while let Some(item) = rx.recv().await {
             yield item;
         }
+        drop(aborts);
     })
 }
 
@@ -222,9 +225,10 @@ fn subscribe_single(
         {
             Ok(cfg) => cfg,
             Err(e) => {
-                yield Err(PhotonError::Internal(format!(
-                    "fluvio consumer config {fluvio_topic}: {e}"
-                )));
+                yield Err(PhotonError::caused(
+                    format!("fluvio consumer config {fluvio_topic}"),
+                    e,
+                ));
                 return;
             }
         };
@@ -232,9 +236,10 @@ fn subscribe_single(
         let mut consumer_stream = match client.consumer_with_config(consumer_config).await {
             Ok(stream) => stream,
             Err(e) => {
-                yield Err(PhotonError::Internal(format!(
-                    "fluvio consumer {fluvio_topic}: {e}"
-                )));
+                yield Err(PhotonError::caused(
+                    format!("fluvio consumer {fluvio_topic}"),
+                    e,
+                ));
                 return;
             }
         };
@@ -268,9 +273,10 @@ fn subscribe_single(
                     }
                 }
                 Err(e) => {
-                    yield Err(PhotonError::Internal(format!(
-                        "fluvio subscribe recv {fluvio_topic}: {e:?}"
-                    )));
+                    yield Err(PhotonError::caused(
+                        format!("fluvio subscribe recv {fluvio_topic}"),
+                        format!("{e:?}"),
+                    ));
                 }
             }
         }

@@ -93,9 +93,7 @@ async fn create_topic_if_missing(
     {
         Ok(()) => Ok(()),
         Err(e) if e.to_string().contains("TopicAlreadyExists") => Ok(()),
-        Err(e) => Err(PhotonError::Internal(format!(
-            "kafka create topic {name}: {e}"
-        ))),
+        Err(e) => Err(PhotonError::caused(format!("kafka create topic {name}"), e)),
     }
 }
 

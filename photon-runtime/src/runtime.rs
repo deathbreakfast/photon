@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use photon_backend::Result;
+
 use crate::{configure, Photon};
 
 /// Core runtime parts after builder (handler executor wired by integration layer).
@@ -15,11 +17,8 @@ pub struct PhotonRuntimeParts {
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn build_photon_parts() -> anyhow::Result<PhotonRuntimeParts> {
-    let photon = Photon::builder()
-        .auto_registry()
-        .build()
-        .map_err(|e| anyhow::anyhow!("Photon build failed: {e}"))?;
+pub fn build_photon_parts() -> Result<PhotonRuntimeParts> {
+    let photon = Photon::builder().auto_registry().build()?;
 
     let photon = Arc::new(photon);
     configure((*photon).clone());

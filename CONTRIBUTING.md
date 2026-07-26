@@ -49,7 +49,7 @@ Do not re-add broad workspace `allow`s for restriction lints without discussion.
 
 ### Error handling
 
-- **Libraries** (`photon-backend`, adapters, core): typed [`PhotonError`](photon-backend/src/error.rs) via `thiserror`. Prefer `PhotonError::caused` / `caused_error` / `persistence` so source chains survive; reserve `Internal(String)` / `PersistenceError(String)` for opaque messages with no underlying error.
+- **Libraries** (`photon-backend`, adapters, core): typed [`PhotonError`](photon-backend/src/error.rs) via `thiserror`. Prefer `PhotonError::caused` / `caused_error` / `persistence` so source chains survive; reserve `Internal(String)` for opaque messages with no underlying error. `PersistenceError(String)` is deprecated.
 - **Binaries / CLI / testkit**: `anyhow` with `.context()` at the edge is fine.
 
 ### OpsLog vs tracing (layered)

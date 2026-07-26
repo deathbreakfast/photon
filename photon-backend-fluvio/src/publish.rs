@@ -55,16 +55,17 @@ impl PublishPipeline {
                         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                         continue;
                     }
-                    return Err(PhotonError::Internal(format!(
-                        "fluvio topic producer {topic}: {e}"
-                    )));
+                    return Err(PhotonError::caused(
+                        format!("fluvio topic producer {topic}"),
+                        e,
+                    ));
                 }
             }
         }
-        Err(PhotonError::Internal(format!(
-            "fluvio topic producer {topic}: {}",
-            last_err.map_or_else(|| "Topic not found".into(), |e| e.to_string())
-        )))
+        Err(PhotonError::caused(
+            format!("fluvio topic producer {topic}"),
+            last_err.map_or_else(|| "Topic not found".into(), |e| e.to_string()),
+        ))
     }
 
     /// Publish and optionally await broker ack; returns offset+1 when acked.
@@ -99,9 +100,21 @@ impl PublishPipeline {
             drop(permit);
             Ok(Some(metadata.offset().saturating_add(1)))
         } else {
+            let topic = topic.to_string();
             tokio::spawn(async move {
-                if let Ok(output) = producer.send(key, body).await {
-                    let _ = output.wait().await;
+                match producer.send(key, body).await {
+                    Ok(output) => {
+                        if let Err(e) = output.wait().await {
+                            tracing::warn!(
+                                error = %e,
+                                topic = %topic,
+                                "fluvio async publish ack failed"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, topic = %topic, "fluvio async publish failed");
+                    }
                 }
                 drop(permit);
             });

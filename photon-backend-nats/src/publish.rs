@@ -64,7 +64,9 @@ impl PublishPipeline {
             Ok(Some(ack.sequence))
         } else {
             tokio::spawn(async move {
-                let _ = ack_future.await;
+                if let Err(e) = ack_future.await {
+                    tracing::warn!(error = %e, subject = %subject, "nats async publish ack failed");
+                }
                 drop(permit);
             });
             Ok(None)

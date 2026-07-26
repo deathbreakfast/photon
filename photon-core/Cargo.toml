@@ -15,7 +15,6 @@ categories.workspace = true
 name = "photon_core"
 
 [dependencies]
-anyhow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

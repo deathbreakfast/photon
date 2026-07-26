@@ -42,10 +42,10 @@ pub fn decode_event(message: &Message) -> Result<Event> {
             .map(async_nats::HeaderValue::as_str)
         {
             if header_id != event.event_id {
-                return Err(PhotonError::Internal(format!(
-                    "nats event_id header mismatch: header={header_id} body={}",
-                    event.event_id
-                )));
+                return Err(PhotonError::caused(
+                    "nats event_id header mismatch",
+                    format!("header={header_id} body={}", event.event_id),
+                ));
             }
         }
 
@@ -55,10 +55,10 @@ pub fn decode_event(message: &Message) -> Result<Event> {
             .and_then(|s| s.parse::<i64>().ok())
         {
             if header_seq != event.seq && !(header_seq == 0 && event.seq == 0) {
-                return Err(PhotonError::Internal(format!(
-                    "nats seq header mismatch: header={header_seq} body={}",
-                    event.seq
-                )));
+                return Err(PhotonError::caused(
+                    "nats seq header mismatch",
+                    format!("header={header_seq} body={}", event.seq),
+                ));
             }
         }
     }
