@@ -29,16 +29,17 @@ const MAX_FLUVIO_TOPIC_LEN: usize = 63;
 /// Sanitize a logical topic name for Fluvio topic naming rules.
 ///
 /// Characters that previously collapsed onto `-` (`.`, `/`, `:`) are escaped so distinct
-/// logical names cannot collide (`a.b` vs `a/b`).
+/// logical names cannot collide (`a.b` vs `a/b`). Escapes use `xNN` (not `~NN`) because Fluvio
+/// topic names only allow alphanumeric characters and `-`.
 #[must_use]
 pub fn sanitize_fluvio_topic_name(topic_name: &str) -> String {
     let mut out = String::with_capacity(topic_name.len());
     for c in topic_name.chars() {
         match c {
-            '.' => out.push_str("~2e"),
-            '/' => out.push_str("~2f"),
-            ':' => out.push_str("~3a"),
-            '~' => out.push_str("~7e"),
+            '.' => out.push_str("x2e"),
+            '/' => out.push_str("x2f"),
+            ':' => out.push_str("x3a"),
+            'x' => out.push_str("x78"),
             c if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' => out.push(c),
             c if c.is_ascii_uppercase() => out.push(c.to_ascii_lowercase()),
             _ => out.push('-'),

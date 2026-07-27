@@ -139,7 +139,7 @@ mod tests {
     fn dots_are_escaped_not_collapsed() {
         assert_eq!(
             fluvio_topic_for(&test_config(1), 0, "testkit.contract.uuid"),
-            "photon-testkit~2econtract~2euuid"
+            "photon-testkitx2econtractx2euuid"
         );
         // Distinct punctuation must not collide after sanitization.
         assert_ne!(
