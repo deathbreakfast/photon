@@ -61,7 +61,7 @@ Runnable host boot: `cargo run -p uf-photon --example embedded_mem --features ru
 
 ## Storage adapter builders
 
-Choose adapters from the crate [Getting started](https://docs.rs/uf-photon/latest/photon/#choose-a-topology) (Embedded vs Brokered). Broker connection, replay, sharding, and env fallbacks are documented **on each builder** (not duplicated here). Each broker builder includes **publisher binary** and **worker binary** examples; `mem` / `SQLite` show Embedded host (`start_executor`) examples. Runnable: `embedded_mem`, `embedded_sqlite`, `nats_worker` + `nats_publisher` (see `photon/README.md` § How to run examples).
+Choose adapters from the crate [Getting started](https://docs.rs/uf-photon/latest/photon/#choose-a-topology) (Embedded vs Brokered). Broker connection, replay, sharding, and env fallbacks are documented **on each builder** (not duplicated here). Each broker builder includes **publisher binary** and **worker binary** examples; `mem` / `SQLite` show Embedded host (`start_executor`) examples. Runnable: `embedded_mem`, `embedded_sqlite`, `nats_worker` + `nats_publisher` (plaintext dev lab), `nats_secure_worker` + `nats_secure_publisher` (TLS + credentials), `kafka_worker` + `kafka_publisher`, `fluvio_worker` + `fluvio_publisher`, `durable_consumer_recovery` (checkpoint restart resume) — see `photon/README.md` § How to run examples.
 
 | Adapter | Builder (config + example) | Resolved config | Storage port |
 |---------|---------------------------|-----------------|--------------|

@@ -46,6 +46,7 @@ photon-backend = { workspace = true, features = ["mem", "runtime"] }
 photon-runtime = { workspace = true, features = ["mem", "runtime"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "signal"] }
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { workspace = true }
@@ -87,6 +88,38 @@ required-features = ["runtime", "nats"]
 [[example]]
 name = "nats_publisher"
 required-features = ["runtime", "nats"]
+
+[[example]]
+name = "nats_secure_worker"
+required-features = ["runtime", "nats"]
+
+[[example]]
+name = "nats_secure_publisher"
+required-features = ["runtime", "nats"]
+
+[[example]]
+name = "kafka_worker"
+required-features = ["runtime", "kafka"]
+
+[[example]]
+name = "kafka_publisher"
+required-features = ["runtime", "kafka"]
+
+[[example]]
+name = "fluvio_worker"
+required-features = ["runtime", "fluvio"]
+
+[[example]]
+name = "fluvio_publisher"
+required-features = ["runtime", "fluvio"]
+
+[[example]]
+name = "durable_consumer_recovery"
+required-features = ["runtime", "sqlite"]
+
+[[example]]
+name = "custom_storage_port_stub"
+required-features = ["runtime", "mem"]
 
 [package.metadata.docs.rs]
 all-features = true

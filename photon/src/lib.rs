@@ -204,8 +204,10 @@
 //! 3. Start one or more **publishers**.
 //!
 //! Runnable: `cargo run -p uf-photon --example nats_worker --features runtime,nats` then
-//! `nats_publisher` (same features). Multi-terminal runbook: repository `photon/README.md`
-//! § How to run examples.
+//! `nats_publisher` (same features). Same pair contract with other adapters: `kafka_worker` +
+//! `kafka_publisher` (`runtime,kafka`), `fluvio_worker` + `fluvio_publisher` (`runtime,fluvio`),
+//! and the production-TLS variant `nats_secure_worker` + `nats_secure_publisher`
+//! (`runtime,nats`). Multi-terminal runbook: repository `photon/README.md` § How to run examples.
 //!
 //! Then continue with [declare topics](#3-declare-topics-and-handlers).
 //!
@@ -261,6 +263,8 @@
 //!   hosts and Brokered workers)
 //! - [`Photon::reclaim_transport`] — retention sweep past the safe watermark
 //! - Optional ops telemetry: [`OpsLog`] via [`PhotonBuilder::ops_log`] (example: `telemetry_ops_log`)
+//! - Restart-safe checkpoints: `durable = "…"` resumes from the last committed seq after a crash
+//!   (example: `durable_consumer_recovery`, `runtime,sqlite`)
 //!
 //! ## Notes
 //!

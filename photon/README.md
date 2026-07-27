@@ -96,6 +96,64 @@ Optional: start a second `nats_worker` in another terminal (same env) before pub
 
 **Production:** use TLS (`tls://…`) + `.credentials_file` / `PHOTON_NATS_CREDS`; never set `PHOTON_ALLOW_INSECURE_BROKER` or `PHOTON_ALLOW_DEV_TRANSPORT_KEY`. Cluster labs: [`infra/broker/README.md`](../infra/broker/README.md).
 
+### 4. Secure brokered — NATS TLS + credentials (`nats_secure_worker` / `nats_secure_publisher`)
+
+Same pair topology as (3), but wired the **production** way: `.require_tls()` + `.credentials_file` / `PHOTON_NATS_CREDS` — never `PHOTON_ALLOW_INSECURE_BROKER`. Requires a real TLS-terminated NATS endpoint (e.g. via a sidecar proxy or managed JetStream); without one, both binaries print the runbook and exit cleanly instead of falling back to plaintext.
+
+```bash
+export PHOTON_TRANSPORT_KEY=cGhvdG9uLWRldi10cmFuc3BvcnQta2V5LTMyYnl0ZXM=
+export PHOTON_NATS_URL=tls://nats.example.internal:4222
+export PHOTON_NATS_STREAM=photon
+export PHOTON_NATS_CREDS=/run/secrets/photon-nats.creds
+
+cargo run -p uf-photon --example nats_secure_worker --features runtime,nats
+# cargo run -p uf-photon --example nats_secure_publisher --features runtime,nats
+```
+
+Success (with a TLS broker): worker `worker received greeting`; publisher `published over TLS`. Without one: both print a `PHOTON_NATS_URL must be tls://…` warning and return `Ok`.
+
+### 5. Brokered — Kafka publisher + worker (`kafka_worker` / `kafka_publisher`)
+
+Same publisher/worker contract as (3), backed by `KafkaStoragePortBuilder`. Local single-node lab: `infra/broker/scripts/kafka-single.sh` (KRaft, `127.0.0.1:9092`).
+
+```bash
+cd infra/broker && ./scripts/kafka-single.sh && source scripts/export-kafka-env.sh && cd -
+
+export PHOTON_TRANSPORT_KEY=cGhvdG9uLWRldi10cmFuc3BvcnQta2V5LTMyYnl0ZXM=
+export PHOTON_ALLOW_INSECURE_BROKER=1
+
+cargo run -p uf-photon --example kafka_worker --features runtime,kafka
+# cargo run -p uf-photon --example kafka_publisher --features runtime,kafka
+```
+
+Success: worker `worker received greeting`; publisher `kafka_publisher: published`.
+
+### 6. Brokered — Fluvio publisher + worker (`fluvio_worker` / `fluvio_publisher`)
+
+Same publisher/worker contract as (3), backed by `FluvioStoragePortBuilder`. Local single-node lab: `infra/broker/scripts/fluvio-single.sh` (SC + SPU on `127.0.0.1:9103`).
+
+```bash
+cd infra/broker && ./scripts/fluvio-single.sh && source scripts/export-fluvio-env.sh && cd -
+
+export PHOTON_TRANSPORT_KEY=cGhvdG9uLWRldi10cmFuc3BvcnQta2V5LTMyYnl0ZXM=
+export PHOTON_ALLOW_INSECURE_BROKER=1
+
+cargo run -p uf-photon --example fluvio_worker --features runtime,fluvio
+# cargo run -p uf-photon --example fluvio_publisher --features runtime,fluvio
+```
+
+Success: worker `worker received greeting`; publisher `fluvio_publisher: published`.
+
+### 7. Durable consumer recovery — `durable_consumer_recovery` (standalone)
+
+Single process, two phases: handles a batch with a `durable = "…"` subscription, force-flushes the checkpoint, "crashes" (drops the `Photon` handle), then opens a **fresh** `SqliteStoragePort` on the same file and resumes — proving the checkpoint-driven restart contract that `nats_worker` / `kafka_worker` / `fluvio_worker` rely on against their own brokers.
+
+```bash
+cargo run -p uf-photon --example durable_consumer_recovery --features runtime,sqlite
+```
+
+Success: `phase 1: checkpoint committed … simulating a process crash` followed by `phase 2: resumed from checkpoint with no redelivery`.
+
 ### Other examples
 
 | Example | Topology | Features | Notes |
