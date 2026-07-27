@@ -32,6 +32,8 @@ Ships with **no default features** (`default = []`). Enable `runtime` + `mem` fo
 
 ## How to run examples
 
+Navigational index: [`examples/README.md`](examples/README.md) (when-to-use ladder + links to each `.rs` file).
+
 Canonical teaching path (start here). Topology docs:
 [Embedded](https://docs.rs/uf-photon/latest/photon/#embedded-one-binary) /
 [Brokered](https://docs.rs/uf-photon/latest/photon/#brokered-publisher--worker-binaries).

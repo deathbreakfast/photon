@@ -128,7 +128,7 @@ Photon::builder()
     .build()?;
 ```
 
-See [Getting started](https://docs.rs/uf-photon/latest/photon/#getting-started) (Embedded vs Brokered) and [`photon::config`](https://docs.rs/uf-photon/latest/photon/config/). Examples runbook: [`photon/README.md`](photon/README.md#how-to-run-examples).
+See [Getting started](https://docs.rs/uf-photon/latest/photon/#getting-started) (Embedded vs Brokered) and [`photon::config`](https://docs.rs/uf-photon/latest/photon/config/). Examples runbook: [`photon/README.md`](photon/README.md#how-to-run-examples) · navigational index: [`photon/examples/README.md`](photon/examples/README.md).
 
 ## Learn more
 
