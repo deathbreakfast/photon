@@ -1,6 +1,6 @@
 [package]
 name = "photon-e2e"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Matrix-driven Photon correctness integration tests"
 publish = false

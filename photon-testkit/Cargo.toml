@@ -1,6 +1,6 @@
 [package]
 name = "photon-testkit"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Shared matrix/scenario/bootstrap for photon-e2e and photon-bench"
 publish = false
