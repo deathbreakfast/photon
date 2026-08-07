@@ -21,10 +21,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::stream::Stream;
+use photon::storage::StorageCapabilities;
 use photon::{
     topic, Event, InProcStoragePort, Photon, PhotonError, Result, StoragePort, TransportCrypto,
 };
-use photon::storage::StorageCapabilities;
 use serde_json::Value;
 
 /// Decorator over any [`StoragePort`] adding topic-name validation and append auditing.
@@ -84,6 +84,22 @@ impl StoragePort for AuditingStoragePort {
 
     async fn get_event(&self, event_id: &str) -> Result<Option<Event>> {
         self.inner.get_event(event_id).await
+    }
+
+    async fn list_by_topic(
+        &self,
+        topic_name: &str,
+        topic_key: Option<&str>,
+        after_seq: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
+        self.inner
+            .list_by_topic(topic_name, topic_key, after_seq, limit)
+            .await
+    }
+
+    async fn list_recent(&self, limit: usize) -> Result<Vec<Event>> {
+        self.inner.list_recent(limit).await
     }
 
     async fn load_checkpoint(
