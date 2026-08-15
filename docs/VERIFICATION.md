@@ -45,7 +45,7 @@ cargo test -p photon-backend --features runtime --tests
 
 ## Encrypted checkpoint delivery (BM-PD*) local smoke
 
-BM-PD0/PD1 measure encrypted publish-to-checkpoint delivery: each durable subscriber decrypts the envelope and calls `set_checkpoint` per message. That is a different metric from BM-P0/BM-PFH publisher ingress and from broker append acknowledgement. Reports use `delivered_ops_per_sec` and per-message `consume_ack_ms` (p50/p95/p99), not BM-P1 `delivery_wait_ms`.
+BM-PD0/PD1 measure encrypted publish-to-checkpoint delivery at locked offered rates (1k/s and 500/s). BM-PD2/PD3 keep the same checkpoint contract and sweep offered rate until the first failing cell (`highest_passing_offered_rate`). That is a different metric from BM-P0/BM-PFH publisher ingress and from broker append acknowledgement. Reports use `delivered_ops_per_sec` and per-message `consume_ack_ms` (p50/p95/p99), not BM-P1 `delivery_wait_ms`.
 
 Crypto stays on. `PHOTON_BENCH_CRYPTO=0` fails the PD report closed. PFH campaigns still disable crypto for ingress measurement; do not copy that env into PD runs.
 
@@ -60,6 +60,7 @@ cargo test -p photon-bench pd
 # 1-second CLI smoke (default PD0 is 1k/s × 30s)
 cargo run -p photon-bench -- run --experiment bm-pd0 --storage mem --ops 1 --telemetry off
 cargo run -p photon-bench --features sqlite -- run --experiment bm-pd0 --storage sqlite --ops 1 --telemetry off
+PHOTON_BENCH_OFFERED_RATE=50 cargo run -p photon-bench -- run --experiment bm-pd2 --storage mem --ops 1 --telemetry off
 
 # NATS operator path (JetStream in-VPC or local cluster; 4-shard AWS campaign uses broker-fleet)
 cargo run -p photon-bench --features nats -- run --experiment bm-pd1 --storage nats --topology broker-cluster

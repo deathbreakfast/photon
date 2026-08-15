@@ -40,4 +40,10 @@ cargo run -p photon-bench -- run \
   --hardware "$HARDWARE" \
   --report "$REPORTS/bm-pd1-mem-isolated-lab-off-${HARDWARE}.json"
 
+echo "=== BM-PD2 mem ${DURATION}s (capacity cell, offered 50) ==="
+PHOTON_BENCH_OFFERED_RATE=50 cargo run -p photon-bench -- run \
+  --experiment bm-pd2 --storage mem --telemetry off --ops "$DURATION" \
+  --hardware "$HARDWARE" \
+  --report "$REPORTS/bm-pd2-mem-isolated-lab-off-${HARDWARE}.json"
+
 echo "PD local smoke complete. Reports in $REPORTS"

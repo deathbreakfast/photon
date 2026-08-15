@@ -37,6 +37,11 @@ pub enum Command {
         nodes: Option<u32>,
         #[arg(long, help = "Parallel publisher count for firehose experiments")]
         publishers: Option<u32>,
+        #[arg(
+            long,
+            help = "Offered publish rate for PD capacity experiments (bm-pd2/bm-pd3)"
+        )]
+        offered_rate: Option<u32>,
     },
     /// Run a campaign slice across the dimension matrix.
     Matrix {

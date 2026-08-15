@@ -23,6 +23,7 @@ pub struct RunArgs {
     pub report: Option<PathBuf>,
     pub nodes: Option<u32>,
     pub publishers: Option<u32>,
+    pub offered_rate: Option<u32>,
 }
 
 pub async fn run_experiment(args: RunArgs) -> Result<()> {
@@ -32,6 +33,9 @@ pub async fn run_experiment(args: RunArgs) -> Result<()> {
     }
     if let Some(nodes) = args.nodes {
         std::env::set_var("PHOTON_BENCH_NODES", nodes.to_string());
+    }
+    if let Some(rate) = args.offered_rate {
+        std::env::set_var("PHOTON_BENCH_OFFERED_RATE", rate.to_string());
     }
     let matrix = matrix_from_cli(&args.storage, &args.telemetry, args.topology.as_deref())?;
 
@@ -60,6 +64,10 @@ pub async fn run_experiment(args: RunArgs) -> Result<()> {
         return run_p9_crypto_delta(args, matrix, plan).await;
     }
 
+    if is_pd_capacity(&args.experiment) && args.offered_rate.is_none() {
+        return run_pd_capacity_sweep(args, matrix).await;
+    }
+
     execute_plan(args, matrix, plan).await
 }
 
@@ -68,6 +76,19 @@ async fn execute_plan(
     matrix: photon_testkit::MatrixSpec,
     plan: ExperimentPlan,
 ) -> Result<()> {
+    let mut out = measure_plan(&args, &matrix, &plan).await?;
+    if is_pd_capacity(&args.experiment) {
+        out.offered_rate = plan.target_rate;
+        out.highest_passing_offered_rate = plan.target_rate.filter(|_| out.pass);
+    }
+    emit_report(&out, args.report.as_ref())
+}
+
+async fn measure_plan(
+    args: &RunArgs,
+    matrix: &photon_testkit::MatrixSpec,
+    plan: &ExperimentPlan,
+) -> Result<BenchReport> {
     let mut session = BootstrapSession::new(matrix.clone());
     session.install_async().await?;
 
@@ -91,8 +112,59 @@ async fn execute_plan(
         None
     };
 
-    let out = build_report(&args, &matrix, &plan, &result, resource_profile);
-    emit_report(&out, args.report.as_ref())
+    Ok(build_report(args, matrix, plan, &result, resource_profile))
+}
+
+fn is_pd_capacity(id: &str) -> bool {
+    matches!(id.to_ascii_lowercase().as_str(), "bm-pd2" | "bm-pd3")
+}
+
+fn pd_offered_rate_ladder() -> Vec<u32> {
+    let raw = std::env::var("PHOTON_BENCH_OFFERED_RATE_SWEEP")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "50,100,250,500,1000".into());
+    parse_offered_rate_ladder(&raw)
+}
+
+fn parse_offered_rate_ladder(raw: &str) -> Vec<u32> {
+    raw.split(',')
+        .filter_map(|s| s.trim().parse().ok())
+        .filter(|&n| n > 0)
+        .collect()
+}
+
+async fn run_pd_capacity_sweep(args: RunArgs, matrix: photon_testkit::MatrixSpec) -> Result<()> {
+    let rates = pd_offered_rate_ladder();
+    if rates.is_empty() {
+        anyhow::bail!("PD capacity sweep needs a positive offered-rate ladder");
+    }
+    let mut last_ok: Option<BenchReport> = None;
+    let mut last_ok_rate: Option<u32> = None;
+    for rate in rates {
+        std::env::set_var("PHOTON_BENCH_OFFERED_RATE", rate.to_string());
+        let plan = resolve_experiment(&args.experiment, args.ops, &matrix)?;
+        let mut report = measure_plan(&args, &matrix, &plan).await?;
+        report.offered_rate = Some(rate);
+        if report.pass && report.status == "ok" {
+            last_ok_rate = Some(rate);
+            last_ok = Some(report);
+            continue;
+        }
+        if let Some(mut ok) = last_ok.take() {
+            ok.highest_passing_offered_rate = last_ok_rate;
+            return emit_report(&ok, args.report.as_ref());
+        }
+        report.highest_passing_offered_rate = None;
+        return emit_report(&report, args.report.as_ref());
+    }
+    match last_ok {
+        Some(mut ok) => {
+            ok.highest_passing_offered_rate = last_ok_rate;
+            emit_report(&ok, args.report.as_ref())
+        }
+        None => anyhow::bail!("PD capacity sweep produced no cells"),
+    }
 }
 
 async fn run_p9_crypto_delta(
@@ -227,6 +299,8 @@ fn build_report(
         acked_deliveries,
         fanout_acked,
         fanout_equal,
+        offered_rate: plan.target_rate,
+        highest_passing_offered_rate: None,
     }
 }
 
@@ -261,7 +335,10 @@ fn fail_closed_report(
 }
 
 fn is_pd_experiment(id: &str) -> bool {
-    matches!(id.to_ascii_lowercase().as_str(), "bm-pd0" | "bm-pd1")
+    matches!(
+        id.to_ascii_lowercase().as_str(),
+        "bm-pd0" | "bm-pd1" | "bm-pd2" | "bm-pd3"
+    )
 }
 
 /// PD experiments require envelope crypto. `PHOTON_BENCH_CRYPTO=0` fails closed.
@@ -432,6 +509,17 @@ mod tests {
         let reason = pd_crypto_disabled_reason("bm-pd0", Some("0")).expect("reject");
         assert!(reason.contains("envelope crypto"));
         assert!(pd_crypto_disabled_reason("bm-pd1", Some("false")).is_some());
+        assert!(pd_crypto_disabled_reason("bm-pd2", Some("0")).is_some());
+        assert!(pd_crypto_disabled_reason("bm-pd3", Some("false")).is_some());
+    }
+
+    #[test]
+    fn offered_rate_ladder_parses_positive_cells() {
+        assert_eq!(
+            parse_offered_rate_ladder("50,100,250,500,1000"),
+            vec![50, 100, 250, 500, 1000]
+        );
+        assert_eq!(parse_offered_rate_ladder("0, ,-1,abc"), Vec::<u32>::new());
     }
 
     #[test]

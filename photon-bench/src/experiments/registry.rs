@@ -109,6 +109,16 @@ pub const REGISTRY: &[ExperimentMeta] = &[
         AdapterReady,
         "encrypted checkpoint fanout, 4 durable subscribers at 500/s each",
     ),
+    meta(
+        "bm-pd2",
+        AdapterReady,
+        "encrypted checkpoint capacity sweep, 1 durable subscriber",
+    ),
+    meta(
+        "bm-pd3",
+        AdapterReady,
+        "encrypted checkpoint fanout capacity sweep, 4 durable subscribers",
+    ),
 ];
 
 const fn meta(id: &'static str, status: ExperimentStatus, summary: &'static str) -> ExperimentMeta {

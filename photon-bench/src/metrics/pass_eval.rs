@@ -64,6 +64,8 @@ const EVALUATORS: &[(&str, EvalFn)] = &[
     ("bm-pfe", eval_pfe),
     ("bm-pd0", eval_pd),
     ("bm-pd1", eval_pd),
+    ("bm-pd2", eval_pd_capacity),
+    ("bm-pd3", eval_pd_capacity),
 ];
 
 pub fn evaluate_pass(ctx: &PassContext) -> bool {
@@ -241,6 +243,18 @@ fn eval_pd(ctx: &PassContext) -> bool {
     ctx.delivered_ops_per_sec.is_some_and(|r| r > 0.0)
 }
 
+fn eval_pd_capacity(ctx: &PassContext) -> bool {
+    if !eval_pd(ctx) {
+        return false;
+    }
+    let target = f64::from(ctx.target_rate.unwrap_or(0));
+    if target <= 0.0 {
+        return false;
+    }
+    ctx.delivered_ops_per_sec
+        .is_some_and(|rate| rate >= 0.9 * target)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,6 +294,35 @@ mod tests {
     fn pd_fails_without_acks() {
         let mut ctx = pd_ctx();
         ctx.acked_deliveries = Some(0);
+        assert!(!evaluate_pass(&ctx));
+    }
+
+    #[test]
+    fn pd2_requires_delivered_rate_near_offered() {
+        let mut ctx = pd_ctx();
+        ctx.experiment = "bm-pd2".into();
+        ctx.target_rate = Some(100);
+        ctx.delivered_ops_per_sec = Some(91.0);
+        assert!(evaluate_pass(&ctx));
+        ctx.delivered_ops_per_sec = Some(80.0);
+        assert!(!evaluate_pass(&ctx));
+        ctx.delivered_ops_per_sec = Some(91.0);
+        ctx.target_rate = None;
+        assert!(!evaluate_pass(&ctx));
+    }
+
+    #[test]
+    fn pd3_requires_fanout_and_delivered_rate() {
+        let mut ctx = pd_ctx();
+        ctx.experiment = "bm-pd3".into();
+        ctx.subscriber_count = Some(4);
+        ctx.acked_deliveries = Some(32);
+        ctx.fanout_acked = Some(vec![8, 8, 8, 8]);
+        ctx.fanout_equal = Some(true);
+        ctx.target_rate = Some(50);
+        ctx.delivered_ops_per_sec = Some(50.0);
+        assert!(evaluate_pass(&ctx));
+        ctx.fanout_equal = Some(false);
         assert!(!evaluate_pass(&ctx));
     }
 }

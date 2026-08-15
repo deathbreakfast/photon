@@ -52,6 +52,7 @@ async fn main() -> Result<()> {
             report,
             nodes,
             publishers,
+            offered_rate,
         } => {
             run::run_experiment(run::RunArgs {
                 experiment,
@@ -64,6 +65,7 @@ async fn main() -> Result<()> {
                 report,
                 nodes,
                 publishers,
+                offered_rate,
             })
             .await?;
         }

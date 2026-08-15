@@ -65,6 +65,12 @@ pub struct BenchReport {
     /// Whether every fanout subscriber acked the same published set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fanout_equal: Option<bool>,
+    /// Offered publish rate for a PD capacity cell.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offered_rate: Option<u32>,
+    /// Highest passing offered rate from a PD2/PD3 sweep (last cell in the array).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub highest_passing_offered_rate: Option<u32>,
 }
 
 impl BenchReport {
@@ -114,6 +120,8 @@ impl BenchReport {
             acked_deliveries: None,
             fanout_acked: None,
             fanout_equal: None,
+            offered_rate: None,
+            highest_passing_offered_rate: None,
         }
     }
 }
@@ -139,12 +147,16 @@ mod tests {
         report.acked_deliveries = Some(40);
         report.fanout_acked = Some(vec![10, 10, 10, 10]);
         report.fanout_equal = Some(true);
+        report.offered_rate = Some(500);
+        report.highest_passing_offered_rate = Some(500);
         let v = serde_json::to_value(&report).expect("serialize");
         assert_eq!(v["delivered_ops_per_sec"], 500.0);
         assert!(v["consume_ack_ms"]["p50"].is_number());
         assert_eq!(v["acked_deliveries"], 40);
         assert_eq!(v["fanout_acked"].as_array().map(Vec::len), Some(4));
         assert_eq!(v["fanout_equal"], true);
+        assert_eq!(v["offered_rate"], 500);
+        assert_eq!(v["highest_passing_offered_rate"], 500);
     }
 
     #[test]

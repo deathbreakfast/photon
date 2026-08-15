@@ -70,6 +70,7 @@ pub fn slice_experiments(slice: &str) -> Result<Vec<&'static str>> {
         "executor" => Ok(vec!["bm-p7", "bm-p8"]),
         "crypto" => Ok(vec!["bm-p9"]),
         "production-delivery" => Ok(vec!["bm-pd0", "bm-pd1"]),
+        "production-capacity" => Ok(vec!["bm-pd2", "bm-pd3"]),
         "broker-spike" => Ok(vec!["bm-pb0", "bm-pb1", "bm-pb2", "bm-pb3"]),
         "broker-fleet" | "distributed-fleet" => Ok(vec![
             "bm-pf0", "bm-pf1", "bm-pf2", "bm-pf3", "bm-pf4", "bm-p6", "bm-pfs", "bm-pfe",
@@ -124,5 +125,11 @@ mod tests {
     fn production_delivery_slice_lists_pd_ids() {
         let ids = slice_experiments("production-delivery").unwrap();
         assert_eq!(ids, vec!["bm-pd0", "bm-pd1"]);
+    }
+
+    #[test]
+    fn production_capacity_slice_lists_pd2_pd3() {
+        let ids = slice_experiments("production-capacity").unwrap();
+        assert_eq!(ids, vec!["bm-pd2", "bm-pd3"]);
     }
 }
