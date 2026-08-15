@@ -32,7 +32,7 @@ Central index for compile-time options, cross-cutting environment variables, and
 |----------|------------|---------|
 | `PHOTON_TRANSPORT_KEY` | **Required** | Base64-encoded 32-byte XChaCha20-Poly1305 transport key. Missing/invalid key fails boot. |
 | `PHOTON_ALLOW_DEV_TRANSPORT_KEY` | **Unset** | When `1`/`true`, allows the hard-coded development key via `from_env_or_dev_default()`. Never set in production or CI. |
-| `PHOTON_BENCH_CRYPTO` | Unset (encrypt on) | Bench-only: `0`/`false` stores plaintext envelopes to measure crypto cost. |
+| `PHOTON_BENCH_CRYPTO` | Unset (encrypt on) | Bench-only: `0`/`false` stores plaintext envelopes to measure crypto cost. BM-PD0/PD1 reject `0` and fail the report closed. |
 
 ---
 
@@ -182,7 +182,7 @@ Fleet multi-node delivery uses broker-native fanout (`nats` / `fluvio` / `kafka`
 | `PHOTON_FLUVIO_ENDPOINT` | Live Fluvio SC for fluvio e2e/bench matrix. |
 | `PHOTON_BENCH_TOPIC_SHARDS` | Storage-agnostic PFH dimension alias (falls back to broker-specific shard env). |
 | `PHOTON_BENCH_HARDWARE` | Hardware profile label in report JSON. |
-| `PHOTON_BENCH_CRYPTO` | `0` disables crypto in bench runs. |
+| `PHOTON_BENCH_CRYPTO` | `0` disables crypto in bench runs. BM-PD0/PD1 reject this and fail the report closed. |
 | `PHOTON_BENCH_P6_P99_BUDGET_MS` | Fanout latency pass budget for BM-P6. Authoritative value from in-VPC run: **103** (rounded from p99 102.58 ms). |
 
 CLI reference: `photon-bench/EXPERIMENTS.md`, `photon-bench/src/cli.rs`.

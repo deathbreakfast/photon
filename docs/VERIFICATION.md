@@ -43,6 +43,30 @@ cargo test -p photon-e2e
 cargo test -p photon-backend --features runtime --tests
 ```
 
+## Encrypted checkpoint delivery (BM-PD*) local smoke
+
+BM-PD0/PD1 measure encrypted publish-to-checkpoint delivery: each durable subscriber decrypts the envelope and calls `set_checkpoint` per message. That is a different metric from BM-P0/BM-PFH publisher ingress and from broker append acknowledgement. Reports use `delivered_ops_per_sec` and per-message `consume_ack_ms` (p50/p95/p99), not BM-P1 `delivery_wait_ms`.
+
+Crypto stays on. `PHOTON_BENCH_CRYPTO=0` fails the PD report closed. PFH campaigns still disable crypto for ingress measurement; do not copy that env into PD runs.
+
+```bash
+export PHOTON_TRANSPORT_KEY=cGhvdG9uLWRldi10cmFuc3BvcnQta2V5LTMyYnl0ZXM=
+
+# Harness tests (mem; sqlite needs --features sqlite)
+cargo test -p photon-testkit checkpoint
+cargo test -p photon-testkit --features sqlite sqlite_encrypted_checkpoint
+cargo test -p photon-bench pd
+
+# 1-second CLI smoke (default PD0 is 1k/s × 30s)
+cargo run -p photon-bench -- run --experiment bm-pd0 --storage mem --ops 1 --telemetry off
+cargo run -p photon-bench --features sqlite -- run --experiment bm-pd0 --storage sqlite --ops 1 --telemetry off
+
+# NATS operator path (JetStream in-VPC or local cluster; 4-shard AWS campaign uses broker-fleet)
+cargo run -p photon-bench --features nats -- run --experiment bm-pd1 --storage nats --topology broker-cluster
+```
+
+SQLite PD0 on a `t3.medium` is enough for local/harness checks. Authoritative NATS PD numbers come from the AWS 4-shard in-VPC campaign (`infra/aws/broker-fleet/scripts/run-pd-campaign-aws.sh` in `uf-live-cloud-lab`).
+
 ## Line coverage (CI artifact)
 
 PR CI runs a non-blocking [`coverage`](../.github/workflows/ci.yml) job with `cargo-llvm-cov`. The job also checks a soft floor (`COVERAGE_FLOOR_PCT` in the workflow); it stays `continue-on-error` until that floor is raised deliberately.

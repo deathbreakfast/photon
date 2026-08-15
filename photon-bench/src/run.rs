@@ -40,6 +40,14 @@ pub async fn run_experiment(args: RunArgs) -> Result<()> {
         return emit_report(&out, args.report.as_ref());
     }
 
+    if let Some(reason) = pd_crypto_disabled_reason(
+        &args.experiment,
+        std::env::var("PHOTON_BENCH_CRYPTO").ok().as_deref(),
+    ) {
+        let out = fail_closed_report(&args, &matrix, &reason);
+        return emit_report(&out, args.report.as_ref());
+    }
+
     let plan = match resolve_experiment(&args.experiment, args.ops, &matrix) {
         Ok(p) => p,
         Err(e) => {
@@ -121,11 +129,13 @@ fn build_report(
     result: &photon_testkit::ScenarioResult,
     resource_profile: Option<harness::ResourceProfile>,
 ) -> BenchReport {
-    let (publish_samples, delivery_samples) = sample_vectors(result);
+    let (publish_samples, delivery_samples, consume_ack_samples) = sample_vectors(result);
     let publish_ms =
         (!publish_samples.is_empty()).then(|| MetricStats::summarize(publish_samples.clone()));
     let delivery_wait_ms =
         (!delivery_samples.is_empty()).then(|| MetricStats::summarize(delivery_samples));
+    let consume_ack_ms =
+        (!consume_ack_samples.is_empty()).then(|| MetricStats::summarize(consume_ack_samples));
 
     let slope = publish_ms
         .as_ref()
@@ -145,6 +155,18 @@ fn build_report(
 
     let status = if result.error.is_none() { "ok" } else { "fail" };
 
+    let delivered_ops_per_sec = result
+        .load
+        .as_ref()
+        .and_then(|l| l.delivered_ops_per_sec)
+        .or_else(|| (result.acked_deliveries > 0).then_some(f64::from(result.acked_deliveries)));
+    let acked_deliveries = (result.acked_deliveries > 0).then_some(result.acked_deliveries);
+    let fanout_acked = (!result.fanout_acked.is_empty()).then(|| result.fanout_acked.clone());
+    let fanout_equal = fanout_acked.as_ref().and_then(|counts| {
+        (counts.len() > 1)
+            .then(|| counts.windows(2).all(|w| w[0] == w[1]) && counts.iter().all(|n| *n > 0))
+    });
+
     let ctx = PassContext {
         experiment: plan.id.clone(),
         publish_ms,
@@ -161,6 +183,11 @@ fn build_report(
         publish_p50_delta_ms: None,
         run_error: result.error.clone(),
         status,
+        acked_deliveries,
+        consume_ack_ms,
+        fanout_acked: fanout_acked.clone(),
+        fanout_equal,
+        delivered_ops_per_sec,
     };
 
     let hardware_detail = Some(harness::capture_hardware());
@@ -195,6 +222,11 @@ fn build_report(
         fleet_aggregate_ops_per_sec: None,
         dimensions,
         diagnostics,
+        delivered_ops_per_sec,
+        consume_ack_ms,
+        acked_deliveries,
+        fanout_acked,
+        fanout_equal,
     }
 }
 
@@ -215,6 +247,36 @@ fn skipped_report(
     );
     report.error = Some(reason.into());
     report
+}
+
+fn fail_closed_report(
+    args: &RunArgs,
+    matrix: &photon_testkit::MatrixSpec,
+    reason: &str,
+) -> BenchReport {
+    let mut report = skipped_report(args, matrix, reason);
+    report.status = "fail";
+    report.pass = false;
+    report
+}
+
+fn is_pd_experiment(id: &str) -> bool {
+    matches!(id.to_ascii_lowercase().as_str(), "bm-pd0" | "bm-pd1")
+}
+
+/// PD experiments require envelope crypto. `PHOTON_BENCH_CRYPTO=0` fails closed.
+///
+/// BM-PFH still disables crypto for ingress measurement; this gate is PD-only.
+fn pd_crypto_disabled_reason(experiment: &str, crypto_env: Option<&str>) -> Option<String> {
+    if !is_pd_experiment(experiment) {
+        return None;
+    }
+    match crypto_env.map(str::trim) {
+        Some("0" | "false" | "FALSE" | "no" | "NO") => Some(format!(
+            "{experiment} requires envelope crypto; PHOTON_BENCH_CRYPTO=0 is rejected"
+        )),
+        _ => None,
+    }
 }
 
 fn matrix_json_fields(matrix: &photon_testkit::MatrixSpec) -> (String, String, String) {
@@ -248,21 +310,25 @@ fn emit_report(out: &BenchReport, path: Option<&PathBuf>) -> Result<()> {
     Ok(())
 }
 
-fn sample_vectors(result: &photon_testkit::ScenarioResult) -> (Vec<f64>, Vec<f64>) {
+fn sample_vectors(result: &photon_testkit::ScenarioResult) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let mut publish_samples = Vec::new();
     let mut delivery_samples = Vec::new();
+    let mut consume_ack_samples = result.consume_ack_samples_ms.clone();
     for timing in &result.step_timings {
         match timing.op.as_str() {
             "publish" => publish_samples.extend(timing.samples_ms.iter().copied()),
             "delivery_wait" => delivery_samples.extend(timing.samples_ms.iter().copied()),
+            "consume_ack" if consume_ack_samples.is_empty() => {
+                consume_ack_samples.extend(timing.samples_ms.iter().copied());
+            }
             _ => {}
         }
     }
-    (publish_samples, delivery_samples)
+    (publish_samples, delivery_samples, consume_ack_samples)
 }
 
 fn publish_p50(result: &photon_testkit::ScenarioResult) -> Option<f64> {
-    let (samples, _) = sample_vectors(result);
+    let (samples, _, _) = sample_vectors(result);
     if samples.is_empty() {
         None
     } else {
@@ -354,5 +420,29 @@ fn pfh_diagnostics(storage: &str) -> Option<serde_json::Value> {
         None
     } else {
         Some(serde_json::Value::Object(obj))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pd_rejects_crypto_disabled() {
+        let reason = pd_crypto_disabled_reason("bm-pd0", Some("0")).expect("reject");
+        assert!(reason.contains("envelope crypto"));
+        assert!(pd_crypto_disabled_reason("bm-pd1", Some("false")).is_some());
+    }
+
+    #[test]
+    fn pfh_still_allows_crypto_disabled() {
+        assert!(pd_crypto_disabled_reason("bm-pfh", Some("0")).is_none());
+        assert!(pd_crypto_disabled_reason("bm-p1", Some("0")).is_none());
+    }
+
+    #[test]
+    fn pd_allows_crypto_on_or_unset() {
+        assert!(pd_crypto_disabled_reason("bm-pd0", None).is_none());
+        assert!(pd_crypto_disabled_reason("bm-pd0", Some("1")).is_none());
     }
 }

@@ -16,7 +16,9 @@ In-process and co-located brokers deliver the highest single-host rates. Split f
 
 ## Backend guidance
 
-Use SQLite/in-process figures for embedded products. Prefer NATS or Fluvio for high ingress; Kafka on this Photon path stays in the low thousands ops/s. Prefer same-region AWS numbers for sizing; cross-region paths need their own measurement. Subscriber fanout at PFH-scale publish rates was not measured in this study.
+Use SQLite/in-process figures for embedded products. Prefer NATS or Fluvio for high ingress; Kafka on this Photon path stays in the low thousands ops/s. Prefer same-region AWS numbers for sizing; cross-region paths need their own measurement.
+
+BM-PFH (and related PF* rows) measure publisher ingress: how fast embeds can append to the broker. BM-PD0/PD1 measure encrypted publish-to-checkpoint delivery: each durable subscriber decrypts the envelope and commits `set_checkpoint` per message. Broker append acknowledgement is the JetStream/Kafka/Fluvio produce ack on the publish path, which is already inside PFH `publish_ms`. PD reports `delivered_ops_per_sec` and per-message `consume_ack_ms`; they do not reuse BM-P1 `delivery_wait_ms`. Subscriber fanout at PFH-scale publish rates was not measured in the ingress study. PD campaign numbers are filled from AWS NATS 4-shard in-VPC runs when those reports exist.
 
 ## How to read these results
 

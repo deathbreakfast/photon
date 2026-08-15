@@ -17,6 +17,11 @@ pub struct PassContext {
     pub publish_p50_delta_ms: Option<f64>,
     pub run_error: Option<String>,
     pub status: &'static str,
+    pub acked_deliveries: Option<u32>,
+    pub consume_ack_ms: Option<MetricStats>,
+    pub fanout_acked: Option<Vec<u32>>,
+    pub fanout_equal: Option<bool>,
+    pub delivered_ops_per_sec: Option<f64>,
 }
 
 const P0_DELTA_BUDGET_MS: f64 = 15.0;
@@ -57,6 +62,8 @@ const EVALUATORS: &[(&str, EvalFn)] = &[
     ("bm-pfh", eval_pl),
     ("bm-pfs", eval_pfs),
     ("bm-pfe", eval_pfe),
+    ("bm-pd0", eval_pd),
+    ("bm-pd1", eval_pd),
 ];
 
 pub fn evaluate_pass(ctx: &PassContext) -> bool {
@@ -204,4 +211,75 @@ fn eval_pfs(ctx: &PassContext) -> bool {
 
 fn eval_pfe(ctx: &PassContext) -> bool {
     ctx.load.is_some_and(|l| l.error_rate < 0.001)
+}
+
+fn eval_pd(ctx: &PassContext) -> bool {
+    let Some(acked) = ctx.acked_deliveries else {
+        return false;
+    };
+    if acked == 0 {
+        return false;
+    }
+    let Some(consume) = &ctx.consume_ack_ms else {
+        return false;
+    };
+    if consume.count == 0 || consume.p50 < 0.0 {
+        return false;
+    }
+    let subs = ctx.subscriber_count.unwrap_or(1);
+    if subs > 1 {
+        let Some(fanout) = &ctx.fanout_acked else {
+            return false;
+        };
+        if fanout.len() != subs as usize {
+            return false;
+        }
+        if ctx.fanout_equal != Some(true) {
+            return false;
+        }
+    }
+    ctx.delivered_ops_per_sec.is_some_and(|r| r > 0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::stats::MetricStats;
+
+    fn pd_ctx() -> PassContext {
+        PassContext {
+            experiment: "bm-pd0".into(),
+            status: "ok",
+            acked_deliveries: Some(8),
+            consume_ack_ms: Some(MetricStats::summarize(vec![1.0, 2.0])),
+            delivered_ops_per_sec: Some(80.0),
+            subscriber_count: Some(1),
+            ..PassContext::default()
+        }
+    }
+
+    #[test]
+    fn pd0_passes_with_consume_ack_samples() {
+        assert!(evaluate_pass(&pd_ctx()));
+    }
+
+    #[test]
+    fn pd1_requires_fanout_equality() {
+        let mut ctx = pd_ctx();
+        ctx.experiment = "bm-pd1".into();
+        ctx.subscriber_count = Some(4);
+        ctx.acked_deliveries = Some(32);
+        ctx.fanout_acked = Some(vec![8, 8, 8, 8]);
+        ctx.fanout_equal = Some(true);
+        assert!(evaluate_pass(&ctx));
+        ctx.fanout_equal = Some(false);
+        assert!(!evaluate_pass(&ctx));
+    }
+
+    #[test]
+    fn pd_fails_without_acks() {
+        let mut ctx = pd_ctx();
+        ctx.acked_deliveries = Some(0);
+        assert!(!evaluate_pass(&ctx));
+    }
 }

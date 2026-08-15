@@ -32,7 +32,7 @@ Criterion microbenches (`BM-CRIT-*`) live in `photon-backend/benches/`; see [`EX
 
 **Reports:** `profiling/photon-bench/reports/{experiment}-{storage}-{topology}-{telemetry}-{hardware}.json`
 
-**Status:** `run` CLI drives [`ScenarioRunner`](../photon-testkit/src/runner.rs). Adapter-tier experiments (`bm-p0`–`bm-pl3`, `bm-pg*`) run on `--storage mem` (or `sqlite` for durable embedded). NATS delivery / fanout fleet experiments (`bm-pf*`, `bm-p6`, `bm-pfs`, `bm-pfe`, `bm-pb*`) require `--storage nats` and broker cluster env. **BM-PFH** runs on `--storage nats|kafka|fluvio` via the matching AWS fleet (`broker-fleet`, `kafka-fleet`, `fluvio-fleet`); skip with `skipped_broker_pending` when unavailable. Decision-grade scaling curves use `--primary-row`.
+**Status:** `run` CLI drives [`ScenarioRunner`](../photon-testkit/src/runner.rs). Adapter-tier experiments (`bm-p0`–`bm-pl3`, `bm-pg*`, `bm-pd*`) run on `--storage mem` (or `sqlite` for durable embedded). NATS delivery / fanout fleet experiments (`bm-pf*`, `bm-p6`, `bm-pfs`, `bm-pfe`, `bm-pb*`) require `--storage nats` and broker cluster env. **BM-PFH** runs on `--storage nats|kafka|fluvio` via the matching AWS fleet (`broker-fleet`, `kafka-fleet`, `fluvio-fleet`); skip with `skipped_broker_pending` when unavailable. **BM-PD0/PD1** (`production-delivery` slice) measure encrypted consume-and-checkpoint on mem/sqlite locally and on NATS for the AWS campaign. Decision-grade scaling curves use `--primary-row`.
 
 ## Run
 
@@ -47,6 +47,9 @@ cargo run -p photon-bench -- run --experiment bm-p1 --storage mem --telemetry of
 
 # BM-P0 — publish-only latency
 cargo run -p photon-bench -- run --experiment bm-p0 --ops 5000 --storage mem --hardware dev-wsl
+
+# BM-PD1 — encrypted checkpoint fanout (crypto on; NATS cluster)
+cargo run -p photon-bench --features nats -- run --experiment bm-pd1 --storage nats --topology broker-cluster
 
 # Write JSON report (local smoke — gitignored reports-local/)
 cargo run -p photon-bench -- run --experiment bm-p0 --ops 5000 \

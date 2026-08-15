@@ -34,12 +34,45 @@ pub enum ScenarioStep {
         #[serde(default)]
         delivery_delay_ms: Option<u32>,
     },
+    /// Durable subscribe that commits a checkpoint on every delivery (BM-PD*).
+    ///
+    /// Distinct from [`Self::SubscribeDurable`], which counts stream items without
+    /// `set_checkpoint`. PD experiments measure encrypted consume-and-ack, not
+    /// subscribe-only delivery.
+    SubscribeDurableCheckpoint {
+        /// Topic name.
+        topic: String,
+        /// Replay from this sequence (inclusive of later events).
+        after_seq: Option<i64>,
+        /// Optional partition key filter.
+        #[serde(default)]
+        topic_key_filter: Option<String>,
+        /// When `true`, keep prior checkpoint subscription tasks.
+        #[serde(default)]
+        accumulate: bool,
+        /// Durable subscription name used as the checkpoint key.
+        subscription_name: String,
+        /// When `false`, deliver without committing (missing-ack sad path).
+        #[serde(default = "default_true")]
+        commit: bool,
+    },
     /// Tear down and rebuild Photon on the same storage port.
     RestartRuntime,
     /// Expect at least `expected_count` deliveries since the last non-accumulating subscribe.
     AssertDelivery {
         /// Minimum deliveries required.
         expected_count: u32,
+    },
+    /// Wait until each checkpoint subscriber has acked `expected_per_subscriber` events.
+    ///
+    /// Fails in both correctness and benchmark modes when any declared subscriber
+    /// misses an acknowledgement or checkpoint visibility times out. Per-message
+    /// `consume_ack` samples are recorded here; do not reuse `delivery_wait`.
+    AssertCheckpointAcks {
+        /// Required checkpoint commits per durable subscriber.
+        expected_per_subscriber: u32,
+        /// Fail closed if acks are not visible within this window.
+        timeout_ms: u32,
     },
     /// Publish `count` times and assert each returns a non-empty, unique `event_id`.
     AssertPublishEventIds {
@@ -139,6 +172,10 @@ pub enum ScenarioStep {
         /// Minimum handler invocations required.
         expected_count: u32,
     },
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 /// Ordered scenario consumed by both drivers.
@@ -801,5 +838,174 @@ impl ScenarioSpec {
                 ScenarioStep::AssertDelivery { expected_count: 1 },
             ],
         }
+    }
+
+    /// Encrypted publish-to-checkpoint delivery of `count` messages (BM-PD* tests).
+    ///
+    /// Each of `subscriber_count` durable subscribers calls `set_checkpoint` per
+    /// message. Distinct from publisher ingress (BM-P0 / BM-PFH) and from
+    /// subscribe-only delivery (BM-P1 `delivery_wait`).
+    #[must_use]
+    pub fn encrypted_checkpoint_delivery_n(subscriber_count: u32, count: u32) -> Self {
+        checkpoint_delivery_scenario(subscriber_count, CheckpointPublish::Count(count), true)
+    }
+
+    /// Encrypted checkpoint fanout: each subscriber acks the same published set (BM-PD1 tests).
+    #[must_use]
+    pub fn encrypted_checkpoint_fanout_n(subscriber_count: u32, count: u32) -> Self {
+        Self::encrypted_checkpoint_delivery_n(subscriber_count, count)
+    }
+
+    /// Sustained encrypted checkpoint delivery at `rate_per_sec` (BM-PD0 / BM-PD1 bench).
+    #[must_use]
+    pub fn encrypted_checkpoint_delivery_at_rate(
+        subscriber_count: u32,
+        rate_per_sec: u32,
+        duration_secs: u32,
+    ) -> Self {
+        checkpoint_delivery_scenario(
+            subscriber_count,
+            CheckpointPublish::Rate {
+                rate_per_sec,
+                duration_secs,
+            },
+            true,
+        )
+    }
+
+    /// Subscribe without committing checkpoints, then fail closed on ack timeout.
+    #[must_use]
+    pub fn encrypted_checkpoint_missing_ack(count: u32, timeout_ms: u32) -> Self {
+        let suffix = unique_nanos();
+        let topic = format!("testkit.pd.miss.{suffix}");
+        let sub = format!("pd-miss-{suffix}");
+        Self {
+            id: format!("encrypted-checkpoint-missing-ack-{count}"),
+            steps: vec![
+                ScenarioStep::SubscribeDurableCheckpoint {
+                    topic: topic.clone(),
+                    after_seq: None,
+                    topic_key_filter: None,
+                    accumulate: false,
+                    subscription_name: sub,
+                    commit: false,
+                },
+                ScenarioStep::PublishN {
+                    topic,
+                    count,
+                    keyed: false,
+                    topic_key: None,
+                },
+                ScenarioStep::AssertCheckpointAcks {
+                    expected_per_subscriber: count,
+                    timeout_ms,
+                },
+            ],
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+enum CheckpointPublish {
+    Count(u32),
+    Rate {
+        rate_per_sec: u32,
+        duration_secs: u32,
+    },
+}
+
+fn unique_nanos() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos())
+}
+
+fn checkpoint_ack_timeout_ms(expected_per_subscriber: u32, duration_secs: u32) -> u32 {
+    let from_count = expected_per_subscriber.saturating_mul(10).max(5_000);
+    let from_duration = duration_secs.saturating_mul(1_000).saturating_add(30_000);
+    from_count.max(from_duration).min(300_000)
+}
+
+fn checkpoint_delivery_scenario(
+    subscriber_count: u32,
+    publish: CheckpointPublish,
+    commit: bool,
+) -> ScenarioSpec {
+    let n = subscriber_count.max(1);
+    let suffix = unique_nanos();
+    let topic = format!("testkit.pd.{suffix}");
+    let mut steps = Vec::new();
+    for i in 0..n {
+        steps.push(ScenarioStep::SubscribeDurableCheckpoint {
+            topic: topic.clone(),
+            after_seq: None,
+            topic_key_filter: None,
+            accumulate: i > 0,
+            subscription_name: format!("pd-{suffix}-{i}"),
+            commit,
+        });
+    }
+    let (expected, duration_secs, id) = match publish {
+        CheckpointPublish::Count(count) => {
+            steps.push(ScenarioStep::PublishN {
+                topic,
+                count,
+                keyed: false,
+                topic_key: None,
+            });
+            (count, 0, format!("encrypted-checkpoint-{n}x{count}"))
+        }
+        CheckpointPublish::Rate {
+            rate_per_sec,
+            duration_secs,
+        } => {
+            steps.push(ScenarioStep::PublishAtRate {
+                topic,
+                rate_per_sec,
+                duration_secs,
+                keyed: false,
+                topic_key: None,
+            });
+            (
+                rate_per_sec.saturating_mul(duration_secs),
+                duration_secs,
+                format!("encrypted-checkpoint-{n}-{rate_per_sec}-{duration_secs}"),
+            )
+        }
+    };
+    steps.push(ScenarioStep::AssertCheckpointAcks {
+        expected_per_subscriber: expected,
+        timeout_ms: checkpoint_ack_timeout_ms(expected, duration_secs),
+    });
+    ScenarioSpec { id, steps }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checkpoint_steps_roundtrip_serde() {
+        let spec = ScenarioSpec::encrypted_checkpoint_delivery_n(1, 2);
+        let json = serde_json::to_string(&spec).expect("serialize");
+        let back: ScenarioSpec = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.steps.len(), spec.steps.len());
+        assert!(matches!(
+            back.steps[0],
+            ScenarioStep::SubscribeDurableCheckpoint { commit: true, .. }
+        ));
+        assert!(matches!(
+            back.steps.last(),
+            Some(ScenarioStep::AssertCheckpointAcks { .. })
+        ));
+    }
+
+    #[test]
+    fn missing_ack_builder_disables_commit() {
+        let spec = ScenarioSpec::encrypted_checkpoint_missing_ack(3, 200);
+        assert!(matches!(
+            spec.steps[0],
+            ScenarioStep::SubscribeDurableCheckpoint { commit: false, .. }
+        ));
     }
 }

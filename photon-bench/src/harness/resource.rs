@@ -22,8 +22,7 @@ pub struct ResourceProfile {
 
 pub fn resource_profiling_enabled(hardware: &str) -> bool {
     if std::env::var("PHOTON_BENCH_RESOURCE_PROFILE")
-        .ok()
-        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
     {
         return true;
     }

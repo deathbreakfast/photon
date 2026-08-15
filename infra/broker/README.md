@@ -1,6 +1,6 @@
 # Broker lab bootstrap
 
-Start broker clusters for BM-PB* / BM-PF* experiments.
+Start broker clusters for BM-PB* / BM-PF* / BM-PD* experiments.
 
 Disk-heavy bench runs are best executed on a cloud VM (e.g. AWS `t3.medium`) with `CARGO_TARGET_DIR=/tmp/photon-target` and `CARGO_INCREMENTAL=0`.
 
@@ -39,6 +39,7 @@ cargo run -p photon-bench --features nats -- run \
 | `scripts/kill-node.sh N` | Stop `photon-nats-N` (PB5 failover) |
 | `scripts/run-pb4-sweep.sh` | 1-node vs 3-node sweep — **informational ratio**; gates on per-run `error_rate` only |
 | `scripts/run-pb5.sh` | Failover kill at t=22s during 45s sustained publish |
+| `scripts/run-pd-smoke.sh` | BM-PD0/PD1 local smoke (mem + sqlite; crypto on) |
 
 **Ports:** client URLs `4222`, `4225`, `4224` (node 2 uses `4225` when `4223` is reserved on WSL). Monitoring: `8222`, `8225`, `8224`.
 

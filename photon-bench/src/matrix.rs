@@ -69,6 +69,7 @@ pub fn slice_experiments(slice: &str) -> Result<Vec<&'static str>> {
         "deploy-shape" => Ok(vec!["bm-p0", "bm-p6"]),
         "executor" => Ok(vec!["bm-p7", "bm-p8"]),
         "crypto" => Ok(vec!["bm-p9"]),
+        "production-delivery" => Ok(vec!["bm-pd0", "bm-pd1"]),
         "broker-spike" => Ok(vec!["bm-pb0", "bm-pb1", "bm-pb2", "bm-pb3"]),
         "broker-fleet" | "distributed-fleet" => Ok(vec![
             "bm-pf0", "bm-pf1", "bm-pf2", "bm-pf3", "bm-pf4", "bm-p6", "bm-pfs", "bm-pfe",
@@ -117,5 +118,11 @@ mod tests {
     fn matrix_from_cli_parses_topology() {
         let m = matrix_from_cli("mem", "off", Some("embedded-composite")).unwrap();
         assert_eq!(m.topology, Topology::EmbeddedComposite);
+    }
+
+    #[test]
+    fn production_delivery_slice_lists_pd_ids() {
+        let ids = slice_experiments("production-delivery").unwrap();
+        assert_eq!(ids, vec!["bm-pd0", "bm-pd1"]);
     }
 }

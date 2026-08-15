@@ -43,6 +43,8 @@ const SPECS: &[ExperimentSpec] = &[
     spec("bm-pg0", build_pg0),
     spec("bm-pg1", build_pg1),
     spec("bm-pg2", build_pg2),
+    spec("bm-pd0", build_pd0),
+    spec("bm-pd1", build_pd1),
 ];
 
 const fn spec(id: &'static str, build: SpecBuilder) -> ExperimentSpec {
@@ -359,6 +361,28 @@ fn build_pg2(id: &str, ops: Option<u32>) -> ExperimentPlan {
     )
 }
 
+fn build_pd0(id: &str, ops: Option<u32>) -> ExperimentPlan {
+    let duration = ops.unwrap_or(30);
+    plan(
+        id,
+        ScenarioSpec::encrypted_checkpoint_delivery_at_rate(1, 1_000, duration),
+        Some(1_000),
+        Some(duration),
+        Some(1),
+    )
+}
+
+fn build_pd1(id: &str, ops: Option<u32>) -> ExperimentPlan {
+    let duration = ops.unwrap_or(30);
+    plan(
+        id,
+        ScenarioSpec::encrypted_checkpoint_delivery_at_rate(4, 500, duration),
+        Some(500),
+        Some(duration),
+        Some(4),
+    )
+}
+
 fn publishers_from_env() -> Option<u32> {
     std::env::var("PHOTON_BENCH_PUBLISHERS")
         .ok()
@@ -380,5 +404,17 @@ mod tests {
                 meta.id
             );
         }
+    }
+
+    #[test]
+    fn pd_plans_set_rates_and_subscriber_counts() {
+        let p0 = build_plan("bm-pd0", Some(1)).expect("pd0");
+        assert_eq!(p0.subscriber_count, Some(1));
+        assert_eq!(p0.target_rate, Some(1_000));
+        assert_eq!(p0.duration_secs, Some(1));
+        let p1 = build_plan("bm-pd1", Some(1)).expect("pd1");
+        assert_eq!(p1.subscriber_count, Some(4));
+        assert_eq!(p1.target_rate, Some(500));
+        assert_eq!(p1.duration_secs, Some(1));
     }
 }
