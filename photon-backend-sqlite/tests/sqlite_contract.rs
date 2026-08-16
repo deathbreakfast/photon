@@ -1,15 +1,27 @@
 //! `SQLite` storage port contract tests (no external broker).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use photon_backend::StoragePort;
 use photon_backend_sqlite::SqliteStoragePort;
 use sqlx::Row;
 use tempfile::NamedTempFile;
+use tokio::task::JoinSet;
+
+fn ensure_dev_transport_key() {
+    if std::env::var("PHOTON_TRANSPORT_KEY").is_err() {
+        std::env::set_var(
+            "PHOTON_TRANSPORT_KEY",
+            "cGhvdG9uLWRldi10cmFuc3BvcnQta2V5LTMyYnl0ZXM=",
+        );
+    }
+}
 
 async fn open_temp_port() -> (SqliteStoragePort, NamedTempFile) {
+    ensure_dev_transport_key();
     let file = NamedTempFile::new().expect("temp db");
     let path = file.path().to_string_lossy().into_owned();
     let port = SqliteStoragePort::open(&path).await.expect("open sqlite");
@@ -82,6 +94,7 @@ async fn sqlite_get_event_and_keyed_filter() {
 
 #[tokio::test]
 async fn sqlite_persists_ciphertext_and_returns_plaintext() {
+    ensure_dev_transport_key();
     let file = NamedTempFile::new().expect("temp db");
     let path = file.path().to_string_lossy().into_owned();
     let port = SqliteStoragePort::open(&path).await.expect("open sqlite");
@@ -125,6 +138,7 @@ async fn sqlite_persists_ciphertext_and_returns_plaintext() {
 
 #[tokio::test]
 async fn sqlite_replay_survives_reopen() {
+    ensure_dev_transport_key();
     let file = NamedTempFile::new().expect("temp db");
     let path = file.path().to_string_lossy().into_owned();
     let topic = format!("testkit.reopen.{}", uuid::Uuid::new_v4());
@@ -203,4 +217,65 @@ async fn sqlite_list_by_topic_and_list_recent_honor_limit() {
         .await
         .expect("zero")
         .is_empty());
+}
+
+#[tokio::test]
+async fn sqlite_file_uses_wal_journal() {
+    let (port, file) = open_temp_port().await;
+    drop(port);
+    let path = file.path().to_string_lossy().into_owned();
+    let pool = sqlx::SqlitePool::connect(&format!("sqlite://{path}"))
+        .await
+        .expect("reopen");
+    let row = sqlx::query("PRAGMA journal_mode")
+        .fetch_one(&pool)
+        .await
+        .expect("pragma");
+    let mode: String = row.get(0);
+    assert_eq!(mode.to_ascii_lowercase(), "wal");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sqlite_sustained_checkpoint_commits_at_pd2_floor() {
+    let (port, _file) = open_temp_port().await;
+    let topic = format!("testkit.wal-chk.{}", uuid::Uuid::new_v4());
+    let port = Arc::new(port);
+    let start = Instant::now();
+    let duration = Duration::from_secs(30);
+    let mut joins = JoinSet::new();
+    for sub in 0..4u32 {
+        let port = Arc::clone(&port);
+        let topic = topic.clone();
+        joins.spawn(async move {
+            let mut seq = 0i64;
+            while start.elapsed() < duration {
+                seq += 1;
+                port.commit_checkpoint(&format!("sub-{sub}"), &topic, None, seq)
+                    .await
+                    .expect("checkpoint");
+                tokio::time::sleep(Duration::from_millis(15)).await;
+            }
+            seq
+        });
+    }
+    let mut total = 0i64;
+    while let Some(res) = joins.join_next().await {
+        total += res.expect("join");
+    }
+    assert!(
+        total >= 1_400,
+        "expected ~50 checkpoints/s for 30s, got {total}"
+    );
+    let loaded = port
+        .load_checkpoint("sub-0", &topic, None)
+        .await
+        .expect("load");
+    assert!(loaded.is_some_and(|seq| seq > 0));
+}
+
+#[tokio::test]
+async fn sqlite_open_rejects_directory_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let result = SqliteStoragePort::open(dir.path().to_str().expect("utf8")).await;
+    assert!(result.is_err(), "directory is not a sqlite file");
 }

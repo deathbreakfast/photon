@@ -2,6 +2,7 @@
 
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_stream::stream;
 use async_trait::async_trait;
@@ -9,7 +10,7 @@ use chrono::Utc;
 use dashmap::DashMap;
 use futures::stream::Stream;
 use serde_json::Value;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions};
 use sqlx::Row;
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -81,6 +82,9 @@ pub struct SqliteStoragePort {
 impl SqliteStoragePort {
     /// Open or create a database at `path`.
     ///
+    /// File-backed pools use WAL and a 5s busy timeout so concurrent checkpoint
+    /// commits wait instead of failing immediately with `SQLITE_BUSY`.
+    ///
     /// # Errors
     ///
     /// Returns an error if the database cannot be opened or migrated.
@@ -92,7 +96,9 @@ impl SqliteStoragePort {
         }
         let options = SqliteConnectOptions::new()
             .filename(path)
-            .create_if_missing(true);
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(Duration::from_secs(5));
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
             .connect_with(options)
