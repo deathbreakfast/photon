@@ -264,7 +264,7 @@ fn build_report(
 
     let hardware_detail = Some(harness::capture_hardware());
     let (topology, telemetry, storage) = matrix_json_fields(matrix);
-    let dimensions = pfh_dimensions(&plan.id, storage.as_str());
+    let dimensions = report_dimensions(&plan.id, storage.as_str());
     let diagnostics = pfh_diagnostics(storage.as_str());
 
     BenchReport {
@@ -447,6 +447,31 @@ fn pfh_env_var(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.is_empty())
 }
 
+fn report_dimensions(experiment: &str, storage: &str) -> Option<serde_json::Value> {
+    if let Some(dims) = pfh_dimensions(experiment, storage) {
+        return Some(dims);
+    }
+    pd_fleet_dimensions(experiment)
+}
+
+/// Stamp multihost client identity for BM-PD2/PD3 fleet cells.
+fn pd_fleet_dimensions(experiment: &str) -> Option<serde_json::Value> {
+    if !is_pd_capacity(experiment) {
+        return None;
+    }
+    let index = std::env::var("PHOTON_BENCH_CLIENT_INDEX")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())?;
+    let count = std::env::var("PHOTON_BENCH_CLIENT_COUNT")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(1);
+    Some(serde_json::json!({
+        "bench_client_index": index,
+        "bench_client_count": count,
+    }))
+}
+
 fn pfh_dimensions(experiment: &str, storage: &str) -> Option<serde_json::Value> {
     if experiment != "bm-pfh" {
         return None;
@@ -532,5 +557,18 @@ mod tests {
     fn pd_allows_crypto_on_or_unset() {
         assert!(pd_crypto_disabled_reason("bm-pd0", None).is_none());
         assert!(pd_crypto_disabled_reason("bm-pd0", Some("1")).is_none());
+    }
+
+    #[test]
+    fn pd_fleet_dimensions_stamp_client_index() {
+        std::env::set_var("PHOTON_BENCH_CLIENT_INDEX", "1");
+        std::env::set_var("PHOTON_BENCH_CLIENT_COUNT", "4");
+        let dims = pd_fleet_dimensions("bm-pd2").expect("dims");
+        assert_eq!(dims["bench_client_index"], 1);
+        assert_eq!(dims["bench_client_count"], 4);
+        assert!(pd_fleet_dimensions("bm-pd0").is_none());
+        std::env::remove_var("PHOTON_BENCH_CLIENT_INDEX");
+        std::env::remove_var("PHOTON_BENCH_CLIENT_COUNT");
+        assert!(pd_fleet_dimensions("bm-pd3").is_none());
     }
 }
