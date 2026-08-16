@@ -34,10 +34,10 @@ pub enum ScenarioStep {
         #[serde(default)]
         delivery_delay_ms: Option<u32>,
     },
-    /// Durable subscribe that commits a checkpoint on every delivery (BM-PD*).
+    /// Durable subscribe that records a coalesced checkpoint on every delivery (BM-PD*).
     ///
     /// Distinct from [`Self::SubscribeDurable`], which counts stream items without
-    /// `set_checkpoint`. PD experiments measure encrypted consume-and-ack, not
+    /// checkpoint records. PD experiments measure encrypted consume-and-ack, not
     /// subscribe-only delivery.
     SubscribeDurableCheckpoint {
         /// Topic name.
@@ -69,7 +69,7 @@ pub enum ScenarioStep {
     /// misses an acknowledgement or checkpoint visibility times out. Per-message
     /// `consume_ack` samples are recorded here; do not reuse `delivery_wait`.
     AssertCheckpointAcks {
-        /// Required checkpoint commits per durable subscriber.
+        /// Required coalesced checkpoint records per durable subscriber.
         expected_per_subscriber: u32,
         /// Fail closed if acks are not visible within this window.
         timeout_ms: u32,
@@ -842,9 +842,11 @@ impl ScenarioSpec {
 
     /// Encrypted publish-to-checkpoint delivery of `count` messages (BM-PD* tests).
     ///
-    /// Each of `subscriber_count` durable subscribers calls `set_checkpoint` per
-    /// message. Distinct from publisher ingress (BM-P0 / BM-PFH) and from
-    /// subscribe-only delivery (BM-P1 `delivery_wait`).
+    /// Each of `subscriber_count` durable subscribers records a coalesced
+    /// checkpoint per message (`CheckpointCoalescer::record`), matching
+    /// `#[subscribe]` executor dispatch. The scenario flushes and checks durable
+    /// `get_checkpoint_seq` before passing. Distinct from publisher ingress
+    /// (BM-P0 / BM-PFH) and from subscribe-only delivery (BM-P1 `delivery_wait`).
     #[must_use]
     pub fn encrypted_checkpoint_delivery_n(subscriber_count: u32, count: u32) -> Self {
         checkpoint_delivery_scenario(subscriber_count, CheckpointPublish::Count(count), true)

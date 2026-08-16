@@ -45,7 +45,7 @@ cargo test -p photon-backend --features runtime --tests
 
 ## Encrypted checkpoint delivery (BM-PD*) local smoke
 
-BM-PD0/PD1 measure encrypted publish-to-checkpoint delivery at locked offered rates (1k/s and 500/s). BM-PD2/PD3 keep the same checkpoint contract and sweep offered rate until the first failing cell (`highest_passing_offered_rate`). That is a different metric from BM-P0/BM-PFH publisher ingress and from broker append acknowledgement. Reports use `delivered_ops_per_sec` and per-message `consume_ack_ms` (p50/p95/p99), not BM-P1 `delivery_wait_ms`.
+BM-PD0/PD1 measure encrypted publish-to-checkpoint delivery at locked offered rates (1k/s and 500/s). BM-PD2/PD3 keep the same checkpoint contract and sweep offered rate until the first failing cell (`highest_passing_offered_rate`). Durable subscribers record through `CheckpointCoalescer` (the same path as `#[subscribe]` handlers) and flush before the durable sequence check. That is a different metric from BM-P0/BM-PFH publisher ingress and from broker append acknowledgement. Reports use `delivered_ops_per_sec` and per-message `consume_ack_ms` (p50/p95/p99), not BM-P1 `delivery_wait_ms`.
 
 Crypto stays on. `PHOTON_BENCH_CRYPTO=0` fails the PD report closed. PFH campaigns still disable crypto for ingress measurement; do not copy that env into PD runs.
 

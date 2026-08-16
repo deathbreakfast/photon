@@ -1,7 +1,7 @@
 //! Shared scenario executor for e2e (correctness) and bench (timings).
 
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -54,7 +54,7 @@ pub struct LoadMetrics {
     pub target_rate: Option<u32>,
     /// Duration of rate-limited steps.
     pub duration_secs: Option<u32>,
-    /// Successful `set_checkpoint` commits (all subscribers).
+    /// Successful coalesced checkpoint records (all subscribers).
     pub acked_deliveries: u32,
     /// Acked deliveries divided by wall time from first publish to ack wait complete.
     pub delivered_ops_per_sec: Option<f64>,
@@ -77,7 +77,7 @@ pub struct ScenarioResult {
     pub load: Option<LoadMetrics>,
     /// Failure message when the run did not meet assertions.
     pub error: Option<String>,
-    /// Successful checkpoint commits across all PD subscribers.
+    /// Successful coalesced checkpoint records across all PD subscribers.
     pub acked_deliveries: u32,
     /// Per-subscriber checkpoint commit counts.
     pub fanout_acked: Vec<u32>,
@@ -87,17 +87,23 @@ pub struct ScenarioResult {
 
 struct CheckpointAckState {
     subscription_name: String,
+    topic_name: String,
+    topic_key: Option<String>,
     acked: AtomicU32,
+    last_seq: AtomicI64,
     samples_ms: Mutex<Vec<f64>>,
     event_ids: Mutex<HashSet<String>>,
     error: Mutex<Option<String>>,
 }
 
 impl CheckpointAckState {
-    fn new(subscription_name: String) -> Arc<Self> {
+    fn new(subscription_name: String, topic_name: String, topic_key: Option<String>) -> Arc<Self> {
         Arc::new(Self {
             subscription_name,
+            topic_name,
+            topic_key,
             acked: AtomicU32::new(0),
+            last_seq: AtomicI64::new(0),
             samples_ms: Mutex::new(Vec::new()),
             event_ids: Mutex::new(HashSet::new()),
             error: Mutex::new(None),
@@ -106,6 +112,7 @@ impl CheckpointAckState {
 
     fn reset(&self) {
         self.acked.store(0, Ordering::SeqCst);
+        self.last_seq.store(0, Ordering::SeqCst);
         self.samples_ms
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -120,8 +127,9 @@ impl CheckpointAckState {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
 
-    fn record_ack(&self, event_id: String, elapsed: Duration) {
+    fn record_ack(&self, event_id: String, seq: i64, elapsed: Duration) {
         self.acked.fetch_add(1, Ordering::SeqCst);
+        self.last_seq.fetch_max(seq, Ordering::SeqCst);
         self.samples_ms
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -825,6 +833,21 @@ async fn handle_assert_checkpoint_acks(
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
+    if let Err(e) = ctx
+        .photon()
+        .runtime()
+        .executor_services
+        .checkpoint_coalescer
+        .flush()
+        .await
+    {
+        return Some(ctx.failure_result(
+            spec,
+            matrix_slug.to_string(),
+            format!("AssertCheckpointAcks: coalescer flush failed: {e}"),
+        ));
+    }
+
     let (acked, fanout, samples) = ctx.checkpoint_snapshot();
     ctx.load.acked_deliveries = acked;
     ctx.load.fanout_acked.clone_from(&fanout);
@@ -862,6 +885,33 @@ async fn handle_assert_checkpoint_acks(
                 detail.join(", ")
             ),
         ));
+    }
+
+    let photon = ctx.photon();
+    for state in &states {
+        let last_seq = state.last_seq.load(Ordering::SeqCst);
+        if last_seq <= 0 {
+            continue;
+        }
+        if !wait_checkpoint_visible(
+            photon,
+            &state.subscription_name,
+            &state.topic_name,
+            state.topic_key.as_deref(),
+            last_seq,
+            CHECKPOINT_VISIBILITY_TIMEOUT,
+        )
+        .await
+        {
+            return Some(ctx.failure_result(
+                spec,
+                matrix_slug.to_string(),
+                format!(
+                    "AssertCheckpointAcks: durable checkpoint not visible for {} seq {last_seq}",
+                    state.subscription_name
+                ),
+            ));
+        }
     }
 
     if states.len() > 1 {
@@ -1373,13 +1423,25 @@ async fn publish_at_rate(
         return Ok((samples, published, errors));
     }
 
+    // Pace at `rate_per_sec` and finish the offered count even when a slow
+    // append slips past the nominal window. Chronic lag still shows up in
+    // `delivered_ops_per_sec` versus the 90% PD capacity gate.
     let start = Instant::now();
-    let deadline = start + Duration::from_secs(u64::from(duration_secs));
+    let expected = rate_per_sec.saturating_mul(duration_secs);
+    let give_up = start
+        + Duration::from_secs(u64::from(
+            duration_secs
+                .saturating_mul(3)
+                .max(duration_secs.saturating_add(30)),
+        ));
     let interval = Duration::from_secs_f64(1.0 / f64::from(rate_per_sec));
     let mut next = start;
     let mut i = 0u32;
 
-    while Instant::now() < deadline {
+    while published.saturating_add(errors) < expected {
+        if Instant::now() >= give_up {
+            break;
+        }
         let payload = serde_json::json!({"n": i});
         let op_start = Instant::now();
         let mut ok = false;
@@ -1524,8 +1586,13 @@ fn spawn_checkpoint_subscription(
     delivery_count: Arc<AtomicU32>,
 ) -> ActiveSubscription {
     let key_filter_meta = topic_key_filter.clone();
-    let state = CheckpointAckState::new(subscription_name.clone());
+    let state = CheckpointAckState::new(
+        subscription_name.clone(),
+        topic.clone(),
+        topic_key_filter.clone(),
+    );
     let ack_state = Arc::clone(&state);
+    let coalescer = Arc::clone(&photon.runtime().executor_services.checkpoint_coalescer);
     let task = tokio::spawn(async move {
         let key_filter = topic_key_filter.as_deref();
         let mut stream = photon.subscribe(&topic, key_filter, after_seq);
@@ -1538,8 +1605,8 @@ fn spawn_checkpoint_subscription(
                 continue;
             }
             let start = Instant::now();
-            if let Err(e) = photon
-                .set_checkpoint(
+            if let Err(e) = coalescer
+                .record(
                     &subscription_name,
                     &event.topic_name,
                     event.topic_key.as_deref(),
@@ -1548,27 +1615,11 @@ fn spawn_checkpoint_subscription(
                 .await
             {
                 state.record_error(format!(
-                    "set_checkpoint failed for {subscription_name}: {e}"
+                    "checkpoint record failed for {subscription_name}: {e}"
                 ));
                 continue;
             }
-            if !wait_checkpoint_visible(
-                &photon,
-                &subscription_name,
-                &event.topic_name,
-                event.topic_key.as_deref(),
-                event.seq,
-                CHECKPOINT_VISIBILITY_TIMEOUT,
-            )
-            .await
-            {
-                state.record_error(format!(
-                    "checkpoint visibility timed out for {subscription_name} seq {}",
-                    event.seq
-                ));
-                continue;
-            }
-            state.record_ack(event.event_id, start.elapsed());
+            state.record_ack(event.event_id, event.seq, start.elapsed());
         }
     });
     ActiveSubscription {
@@ -1696,31 +1747,80 @@ mod tests {
     }
 
     #[cfg(feature = "sqlite")]
-    #[tokio::test(flavor = "multi_thread")]
-    #[serial(photon_process_env)]
-    async fn sqlite_encrypted_checkpoint_delivery_happy_path() {
+    fn ensure_dev_transport_key() {
         if std::env::var("PHOTON_TRANSPORT_KEY").is_err() {
             std::env::set_var(
                 "PHOTON_TRANSPORT_KEY",
                 "cGhvdG9uLWRldi10cmFuc3BvcnQta2V5LTMyYnl0ZXM=",
             );
         }
+    }
+
+    #[cfg(feature = "sqlite")]
+    async fn run_sqlite_spec(spec: ScenarioSpec) -> (ScenarioResult, std::path::PathBuf) {
+        ensure_dev_transport_key();
         let path = std::env::temp_dir().join(format!(
             "photon-pd-sqlite-{}.db",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
+                .map_or(0, |d| d.as_nanos())
         ));
         std::env::set_var("PHOTON_SQLITE_PATH", path.to_string_lossy().as_ref());
-        let result = run_spec(
-            MatrixSpec::ci_sqlite_embedded(),
-            ScenarioSpec::encrypted_checkpoint_delivery_n(1, 8),
-        )
-        .await;
+        let result = run_spec(MatrixSpec::ci_sqlite_embedded(), spec).await;
+        (result, path)
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial(photon_process_env)]
+    async fn sqlite_encrypted_checkpoint_delivery_happy_path() {
+        let (result, path) =
+            run_sqlite_spec(ScenarioSpec::encrypted_checkpoint_delivery_n(1, 8)).await;
         let _ = std::fs::remove_file(&path);
         assert!(result.error.is_none(), "{:?}", result.error);
         assert_eq!(result.acked_deliveries, 8);
         assert_eq!(result.consume_ack_samples_ms.len(), 8);
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial(photon_process_env)]
+    async fn sqlite_encrypted_checkpoint_fanout_equality() {
+        let (result, path) =
+            run_sqlite_spec(ScenarioSpec::encrypted_checkpoint_fanout_n(4, 8)).await;
+        let _ = std::fs::remove_file(&path);
+        assert!(result.error.is_none(), "{:?}", result.error);
+        assert_eq!(result.fanout_acked, vec![8, 8, 8, 8]);
+        assert_eq!(result.acked_deliveries, 32);
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial(photon_process_env)]
+    async fn sqlite_encrypted_checkpoint_missing_ack_times_out() {
+        let (result, path) =
+            run_sqlite_spec(ScenarioSpec::encrypted_checkpoint_missing_ack(3, 400)).await;
+        let _ = std::fs::remove_file(&path);
+        assert!(result.error.is_some(), "expected missing-ack timeout");
+        let err = result.error.unwrap();
+        assert!(
+            err.contains("missed acknowledgement") || err.contains("AssertCheckpointAcks"),
+            "{err}"
+        );
+        assert_eq!(result.acked_deliveries, 0);
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial(photon_process_env)]
+    async fn sqlite_encrypted_checkpoint_sustained_50_per_sec_30s() {
+        let (result, path) = run_sqlite_spec(ScenarioSpec::encrypted_checkpoint_delivery_at_rate(
+            4, 50, 30,
+        ))
+        .await;
+        let _ = std::fs::remove_file(&path);
+        assert!(result.error.is_none(), "{:?}", result.error);
+        assert_eq!(result.fanout_acked, vec![1500, 1500, 1500, 1500]);
+        assert_eq!(result.acked_deliveries, 6000);
     }
 }
