@@ -118,6 +118,8 @@ mem_embedded_scenarios! {
     keyed_filter_miss_mem_embedded => ScenarioSpec::keyed_filter_miss(),
     ephemeral_tail_only_mem_embedded => ScenarioSpec::ephemeral_tail_only(),
     checkpoint_resume_mem_embedded => ScenarioSpec::checkpoint_resume(),
+    encrypted_checkpoint_delivery_mem_embedded => ScenarioSpec::encrypted_checkpoint_delivery_n(1, 8),
+    encrypted_checkpoint_fanout_mem_embedded => ScenarioSpec::encrypted_checkpoint_fanout_n(4, 8),
     cross_node_fanout_mem_embedded => ScenarioSpec::cross_node_fanout("testkit.fanout.mem"),
 }
 
@@ -134,6 +136,8 @@ sqlite_embedded_scenarios! {
     keyed_filter_miss_sqlite_embedded => ScenarioSpec::keyed_filter_miss(),
     ephemeral_tail_only_sqlite_embedded => ScenarioSpec::ephemeral_tail_only(),
     checkpoint_resume_sqlite_embedded => ScenarioSpec::checkpoint_resume(),
+    encrypted_checkpoint_delivery_sqlite_embedded => ScenarioSpec::encrypted_checkpoint_delivery_n(1, 8),
+    encrypted_checkpoint_fanout_sqlite_embedded => ScenarioSpec::encrypted_checkpoint_fanout_n(4, 8),
     cross_node_fanout_sqlite_embedded => ScenarioSpec::cross_node_fanout("testkit.fanout.sqlite"),
 }
 

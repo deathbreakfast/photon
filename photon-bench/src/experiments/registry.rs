@@ -99,6 +99,26 @@ pub const REGISTRY: &[ExperimentMeta] = &[
         GroupReady,
         "post-restart group replay verify (not fleet lease rebalance)",
     ),
+    meta(
+        "bm-pd0",
+        AdapterReady,
+        "encrypted checkpoint delivery, 1 durable subscriber at 1k/s",
+    ),
+    meta(
+        "bm-pd1",
+        AdapterReady,
+        "encrypted checkpoint fanout, 4 durable subscribers at 500/s each",
+    ),
+    meta(
+        "bm-pd2",
+        AdapterReady,
+        "encrypted checkpoint capacity sweep, 1 durable subscriber",
+    ),
+    meta(
+        "bm-pd3",
+        AdapterReady,
+        "encrypted checkpoint fanout capacity sweep, 4 durable subscribers",
+    ),
 ];
 
 const fn meta(id: &'static str, status: ExperimentStatus, summary: &'static str) -> ExperimentMeta {

@@ -64,6 +64,7 @@ pub async fn run_matrix(opts: MatrixRunOptions) -> Result<()> {
                 report: Some(report),
                 nodes: None,
                 publishers: None,
+                offered_rate: None,
             })
             .await?;
         }
