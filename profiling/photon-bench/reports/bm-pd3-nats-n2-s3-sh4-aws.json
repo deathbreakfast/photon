@@ -1,0 +1,60 @@
+{
+  "experiment": "bm-pd3",
+  "matrix_slug": "nats-broker-cluster-off-none",
+  "scenario_id": "encrypted-checkpoint-4-500-30",
+  "hardware": "aws-c6i-large",
+  "backend_id": "nats",
+  "topology": "broker-cluster",
+  "telemetry": "off",
+  "storage": "nats",
+  "subscriber_count": 4,
+  "publish_ms": {
+    "min": 0.6938960000000001,
+    "p50": 1.267621,
+    "p95": 1.742513,
+    "p99": 2.8531199999999997,
+    "max": 17.294795,
+    "count": 15000
+  },
+  "achieved_ops_per_sec": 500.0,
+  "error_rate": 0.0,
+  "backlog_peak": 0,
+  "slope_vs_index": -4.329491466717725e-6,
+  "pass": true,
+  "status": "ok",
+  "hardware_detail": {
+    "cpu_model": "Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz",
+    "cpu_cores": 2,
+    "ram_gib": 3.7272911071777344,
+    "os": "Linux 6.8.0-1061-aws (Ubuntu 22.04.5 LTS)",
+    "root_mount": "/dev/root"
+  },
+  "resource_profile": {
+    "process_rss_bytes_start": 19398656,
+    "process_rss_bytes_end": 63315968,
+    "process_rss_bytes_peak": 63315968,
+    "process_cpu_percent_mean": 4.944423104593819,
+    "process_cpu_percent_peak": 8.000535171798711,
+    "system_mem_available_bytes_min": 3382878208
+  },
+  "node_count": 2,
+  "delivered_ops_per_sec": 1008.2581418565842,
+  "consume_ack_ms": {
+    "min": 2.7547829999999998,
+    "p50": 3.780515,
+    "p95": 4.965897,
+    "p99": 8.060917,
+    "max": 82.179699,
+    "count": 60000
+  },
+  "acked_deliveries": 60000,
+  "fanout_acked": [
+    15000,
+    15000,
+    15000,
+    15000
+  ],
+  "fanout_equal": true,
+  "offered_rate": 500,
+  "highest_passing_offered_rate": 500
+}
