@@ -1,0 +1,55 @@
+{
+  "experiment": "bm-pd2",
+  "matrix_slug": "sqlite-isolated-lab-off-none",
+  "scenario_id": "encrypted-checkpoint-1-100-30",
+  "hardware": "aws-c6i-large",
+  "backend_id": "sqlite",
+  "topology": "isolated-lab",
+  "telemetry": "off",
+  "storage": "sqlite",
+  "subscriber_count": 1,
+  "publish_ms": {
+    "min": 2.454582,
+    "p50": 5.720682,
+    "p95": 6.258523,
+    "p99": 8.984776,
+    "max": 21.302943000000003,
+    "count": 3000
+  },
+  "achieved_ops_per_sec": 100.0,
+  "error_rate": 0.0,
+  "backlog_peak": 0,
+  "slope_vs_index": -0.000011763871682874669,
+  "pass": true,
+  "status": "ok",
+  "hardware_detail": {
+    "cpu_model": "Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz",
+    "cpu_cores": 2,
+    "ram_gib": 3.7272911071777344,
+    "os": "Linux 6.8.0-1061-aws (Ubuntu 22.04.5 LTS)",
+    "root_mount": "/dev/root"
+  },
+  "resource_profile": {
+    "process_rss_bytes_start": 13590528,
+    "process_rss_bytes_end": 18169856,
+    "process_rss_bytes_peak": 18169856,
+    "process_cpu_percent_mean": 0.7213528491336826,
+    "process_cpu_percent_peak": 2.003025730608142,
+    "system_mem_available_bytes_min": 3461853184
+  },
+  "delivered_ops_per_sec": 99.98861471639442,
+  "consume_ack_ms": {
+    "min": 0.000892,
+    "p50": 0.0012,
+    "p95": 0.001562,
+    "p99": 0.0016769999999999999,
+    "max": 0.018501,
+    "count": 3000
+  },
+  "acked_deliveries": 3000,
+  "fanout_acked": [
+    3000
+  ],
+  "offered_rate": 100,
+  "highest_passing_offered_rate": 100
+}
