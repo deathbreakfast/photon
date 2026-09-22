@@ -35,6 +35,15 @@ jobs:
         with:
           command: check
 
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Security audit
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+
   clippy:
     runs-on: ubuntu-latest
     steps:
