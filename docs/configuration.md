@@ -152,6 +152,10 @@ Architecture: repository `docs/adr/001-consumer-groups.md`. Runnable: `cargo run
 | Variable | Default | Source | Purpose |
 |----------|---------|--------|---------|
 | `PHOTON_HANDLER_POOL_SIZE` | `64` | `photon-backend/src/delivery/worker_pool.rs` | Max concurrent handler tasks per partition. |
+| `PHOTON_HANDLER_MAX_RETRIES` | `0` | `photon-runtime/src/executor.rs` | Extra attempts after a handler error before the event goes to the DLQ. Identity-build errors are never retried. Retried handlers must be idempotent. |
+| `PHOTON_HANDLER_RETRY_BACKOFF_MS` | `100` | `photon-runtime/src/executor.rs` | Delay before the first retry; doubles on each further attempt. |
+
+When a subscription stream ends or returns an error, the executor waits (100 ms doubling to a 10 s cap, with jitter), re-reads the checkpoint and subscribes again. Events past the checkpoint that were still in flight can be delivered a second time, which matches the at-least-once contract. A failed DLQ write is logged at error level.
 
 ### Consumer groups (static / lab)
 

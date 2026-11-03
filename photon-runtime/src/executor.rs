@@ -7,6 +7,8 @@
 //! Call [`ExecutorController::shutdown`] then [`ExecutorController::join`] for graceful teardown.
 
 use std::collections::HashMap;
+use std::pin::Pin;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -18,13 +20,16 @@ use photon_backend::{
     delivery::DlqRecordParams,
     delivery_mode::ShardConfig,
     instrumentation::FailureReason,
-    HandlerDescriptor, HandlerRegistry, PhotonError, Result,
+    handler_descriptor::HandlerInvoker, Event, ExecutorServices, HandlerDescriptor, HandlerRegistry,
+    PhotonError, Result,
 };
 use photon_core::IdentityFactory;
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 
 use crate::Photon;
+
+type EventStream = Pin<Box<dyn futures::Stream<Item = Result<Event>> + Send>>;
 
 /// Controls background handler dispatch tasks started by [`Photon::start_executor`].
 pub struct ExecutorController {
@@ -55,6 +60,9 @@ impl ExecutorController {
     /// - Start is one-shot per controller; restart requires a new [`Photon`] build.
     /// - Outer loops respect [`Self::shutdown`]; in-flight handler tasks are awaited in
     ///   [`Self::join`].
+    /// - A stream that ends or errors is resubscribed from the stored checkpoint with capped
+    ///   backoff.
+    /// - Handler errors are retried per `PHOTON_HANDLER_MAX_RETRIES` (default 0) before the DLQ.
     #[tracing::instrument(name = "photon.executor.start", skip_all)]
     pub fn start(&self, photon: &Photon, identity: &Arc<dyn IdentityFactory>) -> Result<()> {
         if self
@@ -128,6 +136,151 @@ const fn failure_reason(err: &PhotonError) -> FailureReason {
     }
 }
 
+/// Reconnect delay bounds for a subscription loop whose stream ended or errored.
+const RESUBSCRIBE_BASE: Duration = Duration::from_millis(100);
+const RESUBSCRIBE_MAX: Duration = Duration::from_secs(10);
+
+/// Capped exponential backoff with jitter.
+struct Backoff {
+    base: Duration,
+    max: Duration,
+    attempt: u32,
+}
+
+impl Backoff {
+    const fn new(base: Duration, max: Duration) -> Self {
+        Self {
+            base,
+            max,
+            attempt: 0,
+        }
+    }
+
+    /// Next delay: `base * 2^attempt` capped at `max`, then jittered into the upper half.
+    fn next_delay(&mut self) -> Duration {
+        let exp = self.base.saturating_mul(1u32 << self.attempt.min(16));
+        let capped = exp.min(self.max);
+        self.attempt = self.attempt.saturating_add(1);
+        let half = capped / 2;
+        let jitter_nanos = u64::from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |d| d.subsec_nanos()),
+        ) % (u64::try_from(half.as_nanos()).unwrap_or(u64::MAX).max(1));
+        half + Duration::from_nanos(jitter_nanos)
+    }
+
+    const fn reset(&mut self) {
+        self.attempt = 0;
+    }
+}
+
+/// Handler retry settings, read once per subscription loop.
+///
+/// `PHOTON_HANDLER_MAX_RETRIES` (default 0) extra attempts after the first failure, spaced by
+/// `PHOTON_HANDLER_RETRY_BACKOFF_MS` (default 100) doubling per attempt.
+#[derive(Clone, Copy)]
+struct RetryPolicy {
+    max_retries: u32,
+    base_delay: Duration,
+}
+
+impl RetryPolicy {
+    fn from_env() -> Self {
+        let max_retries = std::env::var("PHOTON_HANDLER_MAX_RETRIES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let base_ms = std::env::var("PHOTON_HANDLER_RETRY_BACKOFF_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(100);
+        Self {
+            max_retries,
+            base_delay: Duration::from_millis(base_ms),
+        }
+    }
+}
+
+/// Identity failures are deterministic, so only handler errors are retried.
+const fn is_retryable(err: &PhotonError) -> bool {
+    !matches!(err, PhotonError::Identity(_))
+}
+
+fn record_dlq(services: &ExecutorServices, params: &DlqRecordParams<'_>) {
+    if let Err(e) = services.dlq.record(params) {
+        tracing::error!(
+            event_id = params.event_id,
+            topic = params.topic_name,
+            seq = params.seq,
+            error = %e,
+            "DLQ write failed; delivery failure is not recorded"
+        );
+    }
+}
+
+/// Run one handler delivery (with retries), then checkpoint or dead-letter it.
+async fn dispatch_event(
+    identity: Arc<dyn IdentityFactory>,
+    services: Arc<ExecutorServices>,
+    invoke: HandlerInvoker,
+    event: Event,
+    subscription: String,
+    retry: RetryPolicy,
+) {
+    let event_id = event.event_id.clone();
+    let topic_name = event.topic_name.clone();
+    let topic_key = event.topic_key.clone();
+    let seq = event.seq;
+
+    let mut attempt = 0u32;
+    let result = loop {
+        match invoke(identity.as_ref(), &event).await {
+            Ok(()) => break Ok(()),
+            Err(e) if attempt < retry.max_retries && is_retryable(&e) => {
+                tokio::time::sleep(retry.base_delay.saturating_mul(1u32 << attempt.min(16))).await;
+                attempt += 1;
+            }
+            Err(e) => break Err(e),
+        }
+    };
+
+    match result {
+        Ok(()) => {
+            if let Err(e) = services
+                .checkpoint_coalescer
+                .record(&subscription, &topic_name, topic_key.as_deref(), seq)
+                .await
+            {
+                record_dlq(
+                    &services,
+                    &DlqRecordParams {
+                        event_id: &event_id,
+                        topic_name: &topic_name,
+                        topic_key: topic_key.as_deref(),
+                        seq,
+                        subscription_name: Some(&subscription),
+                        reason: FailureReason::CheckpointError,
+                        error: e.to_string(),
+                    },
+                );
+            }
+        }
+        Err(e) => record_dlq(
+            &services,
+            &DlqRecordParams {
+                event_id: &event_id,
+                topic_name: &topic_name,
+                topic_key: topic_key.as_deref(),
+                seq,
+                subscription_name: Some(&subscription),
+                reason: failure_reason(&e),
+                error: e.to_string(),
+            },
+        ),
+    }
+}
+
 fn shard_count_for_handler(photon: &Photon, handler: &'static HandlerDescriptor) -> u32 {
     handler
         .group_shard_count
@@ -141,6 +294,90 @@ fn shard_count_for_handler(photon: &Photon, handler: &'static HandlerDescriptor)
         .unwrap_or(ShardConfig::DEFAULT_SHARD_COUNT)
 }
 
+/// Why a consume pass ended.
+enum PassEnd {
+    /// Shutdown requested, or the worker pool closed; do not resubscribe.
+    Stop,
+    /// Stream ended or errored; resubscribe after backoff.
+    Reconnect,
+}
+
+/// Drain `stream`, spawning one delivery task per event, until it ends, errors or is cancelled.
+#[allow(clippy::too_many_arguments)]
+async fn consume_stream(
+    mut stream: EventStream,
+    cancel: &CancellationToken,
+    services: &Arc<ExecutorServices>,
+    identity: &Arc<dyn IdentityFactory>,
+    inflight: &mut JoinSet<()>,
+    backoff: &mut Backoff,
+    handler: &'static HandlerDescriptor,
+    subscription: &str,
+    retry: RetryPolicy,
+) -> PassEnd {
+    let topic = handler.topic_name;
+    loop {
+        tokio::select! {
+            biased;
+            () = cancel.cancelled() => return PassEnd::Stop,
+            event_result = stream.next() => {
+                let Some(event_result) = event_result else {
+                    tracing::warn!(topic = topic, subscription = subscription, "subscription stream ended; resubscribing");
+                    return PassEnd::Reconnect;
+                };
+                match event_result {
+                    Ok(event) => {
+                        let permit = match services.worker_pool.acquire().await {
+                            Ok(p) => p,
+                            Err(e) => {
+                                // A closed pool never recovers; skipping the event would let the
+                                // checkpoint move past it.
+                                tracing::error!(
+                                    topic = topic,
+                                    subscription = subscription,
+                                    error = %e,
+                                    "worker pool closed; stopping handler loop"
+                                );
+                                return PassEnd::Stop;
+                            }
+                        };
+                        backoff.reset();
+                        let task = dispatch_event(
+                            Arc::clone(identity),
+                            Arc::clone(services),
+                            handler.invoke,
+                            event,
+                            subscription.to_string(),
+                            retry,
+                        );
+                        inflight.spawn(async move {
+                            let _permit = permit;
+                            task.await;
+                        });
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            topic = topic,
+                            subscription = subscription,
+                            error = %e,
+                            "subscription stream error; resubscribing"
+                        );
+                        return PassEnd::Reconnect;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Sleep for the next backoff delay; returns `false` when shutdown arrived first.
+async fn backoff_or_cancel(backoff: &mut Backoff, cancel: &CancellationToken) -> bool {
+    tokio::select! {
+        () = cancel.cancelled() => false,
+        () = tokio::time::sleep(backoff.next_delay()) => true,
+    }
+}
+
 fn spawn_group_handler_loop(
     photon: Photon,
     identity: Arc<dyn IdentityFactory>,
@@ -149,14 +386,14 @@ fn spawn_group_handler_loop(
 ) -> JoinHandle<()> {
     let topic = handler.topic_name;
     let group_id = handler.consumer_group.unwrap_or("");
-    let invoke = handler.invoke;
     let services = Arc::clone(&photon.runtime().executor_services);
     let coordinator = StaticGroupCoordinator;
+    let retry = RetryPolicy::from_env();
 
     tokio::spawn(async move {
         let shard_count = shard_count_for_handler(&photon, handler);
         let instance_id = instance_id_from_env().unwrap_or_else(|| "0".into());
-        let assigned = coordinator
+        let assigned = match coordinator
             .register(GroupMember {
                 group_id: group_id.to_string(),
                 instance_id: instance_id.clone(),
@@ -164,96 +401,41 @@ fn spawn_group_handler_loop(
                 shard_count,
             })
             .await
-            .unwrap_or_else(|_| static_assigned_shards(shard_count));
+        {
+            Ok(shards) => shards,
+            Err(e) => {
+                tracing::warn!(
+                    topic = topic,
+                    group = group_id,
+                    error = %e,
+                    "consumer group registration failed; using static shard assignment"
+                );
+                static_assigned_shards(shard_count)
+            }
+        };
 
-        let mut after_seq_by_shard = HashMap::new();
-        for shard_id in &assigned {
-            let shard_key = photon_backend::shard_storage_key(*shard_id);
-            let seq = photon
-                .get_checkpoint_seq(group_id, topic, Some(&shard_key))
-                .await
-                .ok()
-                .flatten()
-                .unwrap_or(0);
-            after_seq_by_shard.insert(*shard_id, Some(seq));
-        }
-
-        let mut stream = photon.subscribe_consumer_group(topic, &assigned, after_seq_by_shard);
         let mut inflight = JoinSet::new();
-
+        let mut backoff = Backoff::new(RESUBSCRIBE_BASE, RESUBSCRIBE_MAX);
         loop {
-            tokio::select! {
-                biased;
-                () = cancel.cancelled() => break,
-                event_result = stream.next() => {
-                    let Some(event_result) = event_result else { break };
-                    match event_result {
-                        Ok(event) => {
-                            let permit = match services.worker_pool.acquire().await {
-                                Ok(p) => p,
-                                Err(e) => {
-                                    tracing::warn!(
-                                        topic = topic,
-                                        group = group_id,
-                                        error = %e,
-                                        "worker pool acquire failed"
-                                    );
-                                    continue;
-                                }
-                            };
-                            let identity = Arc::clone(&identity);
-                            let services = Arc::clone(&services);
-                            let group = group_id.to_string();
-
-                            inflight.spawn(async move {
-                                let _permit = permit;
-                                let event_id = event.event_id.clone();
-                                let topic_name = event.topic_name.clone();
-                                let topic_key = event.topic_key.clone();
-                                let seq = event.seq;
-                                let dispatch = invoke(identity.as_ref(), &event);
-                                match dispatch.await {
-                                    Ok(()) => {
-                                        if let Err(e) = services
-                                            .checkpoint_coalescer
-                                            .record(&group, &topic_name, topic_key.as_deref(), seq)
-                                            .await
-                                        {
-                                            let _ = services.dlq.record(&DlqRecordParams {
-                                                event_id: &event_id,
-                                                topic_name: &topic_name,
-                                                topic_key: topic_key.as_deref(),
-                                                seq,
-                                                subscription_name: Some(&group),
-                                                reason: FailureReason::CheckpointError,
-                                                error: e.to_string(),
-                                            });
-                                        }
-                                    }
-                                    Err(e) => {
-                                        let _ = services.dlq.record(&DlqRecordParams {
-                                            event_id: &event_id,
-                                            topic_name: &topic_name,
-                                            topic_key: topic_key.as_deref(),
-                                            seq,
-                                            subscription_name: Some(&group),
-                                            reason: failure_reason(&e),
-                                            error: e.to_string(),
-                                        });
-                                    }
-                                }
-                            });
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                topic = topic,
-                                group = group_id,
-                                error = %e,
-                                "consumer group subscription stream error"
-                            );
-                        }
-                    }
-                }
+            let mut after_seq_by_shard = HashMap::new();
+            for shard_id in &assigned {
+                let shard_key = photon_backend::shard_storage_key(*shard_id);
+                let seq = photon
+                    .get_checkpoint_seq(group_id, topic, Some(&shard_key))
+                    .await
+                    .ok()
+                    .flatten()
+                    .unwrap_or(0);
+                after_seq_by_shard.insert(*shard_id, Some(seq));
+            }
+            let stream = photon.subscribe_consumer_group(topic, &assigned, after_seq_by_shard);
+            let end = consume_stream(
+                stream, &cancel, &services, &identity, &mut inflight, &mut backoff, handler,
+                group_id, retry,
+            )
+            .await;
+            if matches!(end, PassEnd::Stop) || !backoff_or_cancel(&mut backoff, &cancel).await {
+                break;
             }
         }
 
@@ -269,101 +451,61 @@ fn spawn_handler_loop(
 ) -> JoinHandle<()> {
     let topic = handler.topic_name;
     let subscription_name = handler.subscription_name;
-    let invoke = handler.invoke;
     let services = Arc::clone(&photon.runtime().executor_services);
+    let retry = RetryPolicy::from_env();
 
     tokio::spawn(async move {
-        // Durable handlers always replay from a cursor. Missing checkpoint → start at 0
-        // (not live-only `None`), so publishes that land before the subscribe handshake
-        // are still delivered from storage.
-        let after_seq = Some(
-            photon
-                .get_checkpoint_seq(subscription_name, topic, None)
-                .await
-                .ok()
-                .flatten()
-                .unwrap_or(0),
-        );
-
-        let mut stream = photon.subscribe(topic, None, after_seq);
         let mut inflight = JoinSet::new();
-
+        let mut backoff = Backoff::new(RESUBSCRIBE_BASE, RESUBSCRIBE_MAX);
         loop {
-            tokio::select! {
-                biased;
-                () = cancel.cancelled() => break,
-                event_result = stream.next() => {
-                    let Some(event_result) = event_result else { break };
-                    match event_result {
-                        Ok(event) => {
-                            let permit = match services.worker_pool.acquire().await {
-                                Ok(p) => p,
-                                Err(e) => {
-                                    tracing::warn!(
-                                        topic = topic,
-                                        subscription = subscription_name,
-                                        error = %e,
-                                        "worker pool acquire failed"
-                                    );
-                                    continue;
-                                }
-                            };
-                            let identity = Arc::clone(&identity);
-                            let services = Arc::clone(&services);
-                            let sub_name = subscription_name.to_string();
-
-                            inflight.spawn(async move {
-                                let _permit = permit;
-                                let event_id = event.event_id.clone();
-                                let topic_name = event.topic_name.clone();
-                                let topic_key = event.topic_key.clone();
-                                let seq = event.seq;
-                                let dispatch = invoke(identity.as_ref(), &event);
-                                match dispatch.await {
-                                    Ok(()) => {
-                                        if let Err(e) = services
-                                            .checkpoint_coalescer
-                                            .record(&sub_name, &topic_name, topic_key.as_deref(), seq)
-                                            .await
-                                        {
-                                            let _ = services.dlq.record(&DlqRecordParams {
-                                                event_id: &event_id,
-                                                topic_name: &topic_name,
-                                                topic_key: topic_key.as_deref(),
-                                                seq,
-                                                subscription_name: Some(&sub_name),
-                                                reason: FailureReason::CheckpointError,
-                                                error: e.to_string(),
-                                            });
-                                        }
-                                    }
-                                    Err(e) => {
-                                        let _ = services.dlq.record(&DlqRecordParams {
-                                            event_id: &event_id,
-                                            topic_name: &topic_name,
-                                            topic_key: topic_key.as_deref(),
-                                            seq,
-                                            subscription_name: Some(&sub_name),
-                                            reason: failure_reason(&e),
-                                            error: e.to_string(),
-                                        });
-                                    }
-                                }
-                            });
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                topic = topic,
-                                subscription = subscription_name,
-                                error = %e,
-                                "handler subscription stream error"
-                            );
-                        }
-                    }
-                }
+            // Durable handlers always replay from a cursor. Missing checkpoint → start at 0
+            // (not live-only `None`), so publishes that land before the subscribe handshake
+            // are still delivered from storage.
+            let after_seq = Some(
+                photon
+                    .get_checkpoint_seq(subscription_name, topic, None)
+                    .await
+                    .ok()
+                    .flatten()
+                    .unwrap_or(0),
+            );
+            let stream = photon.subscribe(topic, None, after_seq);
+            let end = consume_stream(
+                stream, &cancel, &services, &identity, &mut inflight, &mut backoff, handler,
+                subscription_name, retry,
+            )
+            .await;
+            if matches!(end, PassEnd::Stop) || !backoff_or_cancel(&mut backoff, &cancel).await {
+                break;
             }
         }
 
         while inflight.join_next().await.is_some() {}
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backoff_grows_caps_and_resets() {
+        let mut b = Backoff::new(Duration::from_millis(100), Duration::from_millis(800));
+        let first = b.next_delay();
+        assert!(first >= Duration::from_millis(50) && first <= Duration::from_millis(100));
+        for _ in 0..10 {
+            let d = b.next_delay();
+            assert!(d <= Duration::from_millis(800));
+        }
+        let capped = b.next_delay();
+        assert!(capped >= Duration::from_millis(400));
+        b.reset();
+        assert!(b.next_delay() <= Duration::from_millis(100));
+    }
+
+    #[test]
+    fn identity_errors_are_not_retried() {
+        assert!(!is_retryable(&PhotonError::Identity("bad".into())));
+        assert!(is_retryable(&PhotonError::Internal("boom".into())));
+    }
 }
