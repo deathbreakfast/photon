@@ -302,19 +302,34 @@ enum PassEnd {
     Reconnect,
 }
 
+/// Per-loop state shared by every consume pass.
+struct LoopCtx {
+    cancel: CancellationToken,
+    services: Arc<ExecutorServices>,
+    identity: Arc<dyn IdentityFactory>,
+    handler: &'static HandlerDescriptor,
+    /// Durable subscription name, or the consumer group id for group handlers.
+    subscription: String,
+    retry: RetryPolicy,
+}
+
 /// Drain `stream`, spawning one delivery task per event, until it ends, errors or is cancelled.
-#[allow(clippy::too_many_arguments)]
 async fn consume_stream(
     mut stream: EventStream,
-    cancel: &CancellationToken,
-    services: &Arc<ExecutorServices>,
-    identity: &Arc<dyn IdentityFactory>,
+    ctx: &LoopCtx,
     inflight: &mut JoinSet<()>,
     backoff: &mut Backoff,
-    handler: &'static HandlerDescriptor,
-    subscription: &str,
-    retry: RetryPolicy,
 ) -> PassEnd {
+    let LoopCtx {
+        cancel,
+        services,
+        identity,
+        handler,
+        subscription,
+        retry,
+    } = ctx;
+    let subscription = subscription.as_str();
+    let retry = *retry;
     let topic = handler.topic_name;
     loop {
         tokio::select! {
@@ -414,6 +429,14 @@ fn spawn_group_handler_loop(
             }
         };
 
+        let ctx = LoopCtx {
+            cancel,
+            services,
+            identity,
+            handler,
+            subscription: group_id.to_string(),
+            retry,
+        };
         let mut inflight = JoinSet::new();
         let mut backoff = Backoff::new(RESUBSCRIBE_BASE, RESUBSCRIBE_MAX);
         loop {
@@ -429,12 +452,8 @@ fn spawn_group_handler_loop(
                 after_seq_by_shard.insert(*shard_id, Some(seq));
             }
             let stream = photon.subscribe_consumer_group(topic, &assigned, after_seq_by_shard);
-            let end = consume_stream(
-                stream, &cancel, &services, &identity, &mut inflight, &mut backoff, handler,
-                group_id, retry,
-            )
-            .await;
-            if matches!(end, PassEnd::Stop) || !backoff_or_cancel(&mut backoff, &cancel).await {
+            let end = consume_stream(stream, &ctx, &mut inflight, &mut backoff).await;
+            if matches!(end, PassEnd::Stop) || !backoff_or_cancel(&mut backoff, &ctx.cancel).await {
                 break;
             }
         }
@@ -455,6 +474,14 @@ fn spawn_handler_loop(
     let retry = RetryPolicy::from_env();
 
     tokio::spawn(async move {
+        let ctx = LoopCtx {
+            cancel,
+            services,
+            identity,
+            handler,
+            subscription: subscription_name.to_string(),
+            retry,
+        };
         let mut inflight = JoinSet::new();
         let mut backoff = Backoff::new(RESUBSCRIBE_BASE, RESUBSCRIBE_MAX);
         loop {
@@ -470,12 +497,8 @@ fn spawn_handler_loop(
                     .unwrap_or(0),
             );
             let stream = photon.subscribe(topic, None, after_seq);
-            let end = consume_stream(
-                stream, &cancel, &services, &identity, &mut inflight, &mut backoff, handler,
-                subscription_name, retry,
-            )
-            .await;
-            if matches!(end, PassEnd::Stop) || !backoff_or_cancel(&mut backoff, &cancel).await {
+            let end = consume_stream(stream, &ctx, &mut inflight, &mut backoff).await;
+            if matches!(end, PassEnd::Stop) || !backoff_or_cancel(&mut backoff, &ctx.cancel).await {
                 break;
             }
         }

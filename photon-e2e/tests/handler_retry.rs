@@ -56,7 +56,20 @@ async fn transient_failures_retry_and_permanent_failures_dead_letter_after_budge
 
     FlakyEvent { value: 1 }.publish().await.expect("publish");
     BrokenEvent { value: 1 }.publish().await.expect("publish");
-    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+
+    // Poll until the counters settle instead of sleeping a fixed time.
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    while tokio::time::Instant::now() < deadline {
+        if FLAKY_CALLS.load(Ordering::SeqCst) >= 3
+            && BROKEN_CALLS.load(Ordering::SeqCst) >= 3
+            && !photon.runtime().executor_services.dlq.is_empty()
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    // Grace period so an unwanted extra call or DLQ row would show up in the asserts below.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     // Two failures then success: three calls, nothing dead-lettered for this handler.
     assert_eq!(FLAKY_CALLS.load(Ordering::SeqCst), 3);
