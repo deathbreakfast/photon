@@ -91,6 +91,7 @@ jobs:
       - name: Start NATS JetStream
         # GHA service containers do not support `command`; start NATS via docker so we can pass -js.
         run: |
+          docker rm -f photon-nats >/dev/null 2>&1 || true
           docker run -d --name photon-nats \
             -p 4222:4222 -p 8222:8222 \
             nats:2.10 -js -m 8222
