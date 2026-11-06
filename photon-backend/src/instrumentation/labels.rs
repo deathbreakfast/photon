@@ -9,6 +9,8 @@ pub enum FailureReason {
     HandlerError,
     /// Checkpoint commit failed after successful delivery.
     CheckpointError,
+    /// Backend yielded a bad stream item (decode/decrypt/ack) instead of an event.
+    StreamItem,
 }
 
 impl FailureReason {
@@ -19,6 +21,7 @@ impl FailureReason {
             Self::IdentityBuild => "identity_build",
             Self::HandlerError => "handler_error",
             Self::CheckpointError => "checkpoint_error",
+            Self::StreamItem => "stream_item",
         }
     }
 }
