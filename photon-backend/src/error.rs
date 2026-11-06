@@ -83,6 +83,23 @@ pub enum PhotonError {
     #[error("identity error: {0}")]
     Identity(String),
 
+    /// One stream item was bad (decode, decrypt or ack failure) but the stream is still usable.
+    ///
+    /// The executor dead-letters the item when `event_id` and `seq` are known and keeps
+    /// reading the same stream. Every other error from a subscription stream is fatal.
+    #[error("stream item error: {context}")]
+    StreamItem {
+        /// Human-readable context for the failure.
+        context: String,
+        /// Event id when the item was decoded far enough to know it.
+        event_id: Option<String>,
+        /// Event sequence when known.
+        seq: Option<i64>,
+        /// Underlying error.
+        #[source]
+        source: SharedError,
+    },
+
     /// Internal error (opaque message, no source chain).
     #[error("internal error: {0}")]
     Internal(String),
@@ -111,6 +128,33 @@ impl PhotonError {
             context: context.into(),
             source: Arc::new(DisplayError(err.to_string())),
         }
+    }
+
+    /// Per-item stream failure; see [`PhotonError::StreamItem`].
+    pub fn stream_item(
+        context: impl Into<String>,
+        event_id: Option<String>,
+        seq: Option<i64>,
+        err: impl fmt::Display + Send + Sync + 'static,
+    ) -> Self {
+        Self::StreamItem {
+            context: context.into(),
+            event_id,
+            seq,
+            source: Arc::new(DisplayError(err.to_string())),
+        }
+    }
+
+    /// Whether this error marks one bad stream item rather than a dead stream.
+    #[must_use]
+    pub const fn is_stream_item(&self) -> bool {
+        matches!(self, Self::StreamItem { .. })
+    }
+
+    /// Whether retrying the same subscription can never succeed (bad topic configuration).
+    #[must_use]
+    pub const fn is_config(&self) -> bool {
+        matches!(self, Self::InvalidTopicName(_) | Self::TopicNotFound(_))
     }
 
     /// Internal error wrapping a real [`std::error::Error`] source chain.
@@ -223,6 +267,19 @@ mod tests {
         let err = serde_json::from_str::<serde_json::Value>("{").unwrap_err();
         let err = PhotonError::from(err);
         assert!(matches!(err, PhotonError::PayloadError(_)));
+    }
+
+    #[test]
+    fn stream_item_and_config_predicates() {
+        let item = PhotonError::stream_item("decode", Some("e1".into()), Some(3), BadTag);
+        assert!(item.is_stream_item());
+        assert!(!item.is_config());
+        assert_eq!(
+            item.source().map(ToString::to_string).as_deref(),
+            Some("bad auth tag")
+        );
+        assert!(PhotonError::InvalidTopicName("x".into()).is_config());
+        assert!(!PhotonError::caused("recv", BadTag).is_stream_item());
     }
 
     #[test]

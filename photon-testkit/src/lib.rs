@@ -15,6 +15,7 @@ pub mod shared_store;
 
 mod backends;
 mod bench_handlers;
+mod faulty_backend;
 mod group_topics;
 
 #[cfg(feature = "backend-author")]
@@ -32,6 +33,7 @@ pub use cross_node::{
     apply_cross_node_fanout_step, run_cross_node_fanout_lab, CrossNodeFanoutResult,
     CrossNodeStepOutcome, FANOUT_PUBLISH_COUNT,
 };
+pub use faulty_backend::{FaultyBackend, StreamFault, BAD_ITEM_EVENT_ID, BAD_ITEM_SEQ};
 pub use identity::StubIdentityFactory;
 pub use matrix::{MatrixSpec, ShardStrategy, StorageAdapter, TelemetryAdapter, Topology};
 pub use runner::{LoadMetrics, RunMode, ScenarioResult, ScenarioRunner, StepTiming};

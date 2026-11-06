@@ -266,24 +266,38 @@ fn subscribe_single(
             match result {
                 Ok(message) => {
                     let ack_result = message.ack().await;
+                    let mut ack_seq = None;
                     match decode_event(&message) {
                         Ok(mut event) => {
                             normalize_event_seq(&mut event, &message, &config);
+                            let id_and_seq = (event.event_id.clone(), event.seq);
                             match open_stored_event(&config.crypto, event) {
                                 Ok(event)
                                     if topic_filter_matches(&event, &topic, filter.as_ref())
                                         && after_seq.is_none_or(|seq| event.seq > seq) =>
                             {
+                                ack_seq = Some(id_and_seq.1);
                                 yield Ok(event);
                             }
                                 Ok(_) => {}
-                                Err(e) => yield Err(e),
+                                Err(e) => {
+                                    yield Err(PhotonError::stream_item(
+                                        "nats open stored event:",
+                                        Some(id_and_seq.0),
+                                        Some(id_and_seq.1),
+                                        e,
+                                    ));
+                                }
                             }
                         }
-                        Err(e) => yield Err(e),
+                        Err(e) => {
+                            yield Err(PhotonError::stream_item("nats decode event:", None, None, e));
+                        }
                     }
                     if let Err(e) = ack_result {
-                        yield Err(PhotonError::caused("nats message ack:", e));
+                        // The event was already delivered (or filtered); no event id, so the
+                        // executor logs the failure instead of dead-lettering a handled event.
+                        yield Err(PhotonError::stream_item("nats message ack:", None, ack_seq, e));
                     }
                 }
                 Err(e) => {

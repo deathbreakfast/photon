@@ -8,9 +8,9 @@
 
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures::StreamExt;
 use photon_backend::{
@@ -19,9 +19,9 @@ use photon_backend::{
     consumer_group::{ConsumerGroupCoordinator, GroupMember, StaticGroupCoordinator},
     delivery::DlqRecordParams,
     delivery_mode::ShardConfig,
+    handler_descriptor::HandlerInvoker,
     instrumentation::FailureReason,
-    handler_descriptor::HandlerInvoker, Event, ExecutorServices, HandlerDescriptor, HandlerRegistry,
-    PhotonError, Result,
+    Event, ExecutorServices, HandlerDescriptor, HandlerRegistry, PhotonError, Result,
 };
 use photon_core::IdentityFactory;
 use tokio::task::{JoinHandle, JoinSet};
@@ -370,6 +370,48 @@ async fn consume_stream(
                             task.await;
                         });
                     }
+                    Err(e) if e.is_config() => {
+                        tracing::error!(
+                            topic = topic,
+                            subscription = subscription,
+                            error = %e,
+                            "subscription configuration error; stopping handler loop"
+                        );
+                        return PassEnd::Stop;
+                    }
+                    Err(PhotonError::StreamItem { context, event_id, seq, source }) => {
+                        match (event_id, seq) {
+                            (Some(event_id), Some(seq)) => {
+                                tracing::error!(
+                                    topic = topic,
+                                    subscription = subscription,
+                                    event_id = %event_id,
+                                    seq = seq,
+                                    error = %source,
+                                    "{context} bad stream item; dead-lettering and continuing"
+                                );
+                                record_dlq(
+                                    services,
+                                    &DlqRecordParams {
+                                        event_id: &event_id,
+                                        topic_name: topic,
+                                        topic_key: None,
+                                        seq,
+                                        subscription_name: Some(subscription),
+                                        reason: FailureReason::StreamItem,
+                                        error: format!("{context} {source}"),
+                                    },
+                                );
+                            }
+                            (_, seq) => tracing::error!(
+                                topic = topic,
+                                subscription = subscription,
+                                seq = ?seq,
+                                error = %source,
+                                "{context} bad stream item; skipping"
+                            ),
+                        }
+                    }
                     Err(e) => {
                         tracing::warn!(
                             topic = topic,
@@ -530,5 +572,148 @@ mod tests {
     fn identity_errors_are_not_retried() {
         assert!(!is_retryable(&PhotonError::Identity("bad".into())));
         assert!(is_retryable(&PhotonError::Internal("boom".into())));
+    }
+
+    #[cfg(feature = "mem")]
+    mod stream {
+        use std::collections::HashMap;
+        use std::sync::Mutex;
+
+        use photon_backend::retention::RetentionPolicy;
+        use photon_backend::{InProcStoragePort, StoragePort, TransportCrypto};
+        use photon_core::JsonIdentityFactory;
+
+        use super::super::*;
+
+        static SEEN: Mutex<Vec<(String, i64)>> = Mutex::new(Vec::new());
+
+        fn record_seen<'a>(
+            _id: &'a dyn IdentityFactory,
+            event: &'a Event,
+        ) -> Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+            Box::pin(async move {
+                SEEN.lock()
+                    .unwrap()
+                    .push((event.topic_name.clone(), event.seq));
+                Ok(())
+            })
+        }
+
+        fn event(topic: &str, seq: i64) -> Event {
+            serde_json::from_value(serde_json::json!({
+                "event_id": format!("e{seq}"),
+                "topic_name": topic,
+                "topic_key": null,
+                "seq": seq,
+                "actor_json": {},
+                "payload_json": {},
+                "created_at": "2026-01-01T00:00:00Z",
+            }))
+            .expect("event json")
+        }
+
+        fn ctx(topic: &'static str) -> LoopCtx {
+            let port: Arc<dyn StoragePort> = Arc::new(InProcStoragePort::new(
+                TransportCrypto::from_bytes(*b"photon-dev-transport-key-32bytes"),
+            ));
+            let handler: &'static HandlerDescriptor = Box::leak(Box::new(HandlerDescriptor::new(
+                topic,
+                "sub",
+                "k",
+                record_seen,
+            )));
+            LoopCtx {
+                cancel: CancellationToken::new(),
+                services: Arc::new(ExecutorServices::new(
+                    port,
+                    RetentionPolicy::default(),
+                    None,
+                )),
+                identity: Arc::new(JsonIdentityFactory),
+                handler,
+                subscription: "sub".into(),
+                retry: RetryPolicy {
+                    max_retries: 0,
+                    base_delay: Duration::from_millis(1),
+                },
+            }
+        }
+
+        async fn run(ctx: &LoopCtx, items: Vec<Result<Event>>) -> (PassEnd, Vec<i64>) {
+            let mut inflight = JoinSet::new();
+            let mut backoff = Backoff::new(RESUBSCRIBE_BASE, RESUBSCRIBE_MAX);
+            let end = consume_stream(
+                Box::pin(futures::stream::iter(items)),
+                ctx,
+                &mut inflight,
+                &mut backoff,
+            )
+            .await;
+            while inflight.join_next().await.is_some() {}
+            let topic = ctx.handler.topic_name;
+            let mut seen: HashMap<String, Vec<i64>> = HashMap::new();
+            for (t, seq) in SEEN.lock().unwrap().iter() {
+                seen.entry(t.clone()).or_default().push(*seq);
+            }
+            let mut got = seen.remove(topic).unwrap_or_default();
+            got.sort_unstable();
+            (end, got)
+        }
+
+        #[tokio::test]
+        async fn item_error_mid_stream_is_dead_lettered_and_stream_continues() {
+            let c = ctx("exec.unit.item");
+            let bad = PhotonError::stream_item("open", Some("e2".into()), Some(2), "bad tag");
+            let (end, got) = run(
+                &c,
+                vec![
+                    Ok(event("exec.unit.item", 1)),
+                    Err(bad),
+                    Ok(event("exec.unit.item", 3)),
+                ],
+            )
+            .await;
+            assert_eq!(got, vec![1, 3]);
+            assert!(
+                matches!(end, PassEnd::Reconnect),
+                "only the stream end reconnects"
+            );
+            assert_eq!(c.services.dlq.len(), 1);
+        }
+
+        #[tokio::test]
+        async fn item_error_without_id_is_skipped_without_dlq() {
+            let c = ctx("exec.unit.noid");
+            let bad = PhotonError::stream_item("decode", None, None, "garbage");
+            let (_, got) = run(&c, vec![Err(bad), Ok(event("exec.unit.noid", 1))]).await;
+            assert_eq!(got, vec![1]);
+            assert!(c.services.dlq.is_empty());
+        }
+
+        #[tokio::test]
+        async fn fatal_error_ends_the_pass_for_resubscribe() {
+            let c = ctx("exec.unit.fatal");
+            let fatal = PhotonError::caused("nats subscribe recv:", "connection reset");
+            let (end, got) = run(
+                &c,
+                vec![
+                    Ok(event("exec.unit.fatal", 1)),
+                    Err(fatal),
+                    Ok(event("exec.unit.fatal", 3)),
+                ],
+            )
+            .await;
+            assert_eq!(got, vec![1]);
+            assert!(matches!(end, PassEnd::Reconnect));
+            assert!(c.services.dlq.is_empty());
+        }
+
+        #[tokio::test]
+        async fn invalid_topic_stops_the_loop() {
+            let c = ctx("exec.unit.badtopic");
+            let (end, got) = run(&c, vec![Err(PhotonError::InvalidTopicName("bad*".into()))]).await;
+            assert_eq!(got, Vec::<i64>::new());
+            assert!(matches!(end, PassEnd::Stop));
+        }
     }
 }
