@@ -22,6 +22,10 @@ ignore = [
     # 2026-11-05: pin-utils 0.1.0 archived upstream on 2026-10-01; only reachable via
     # fluvio -> fluvio-future -> fluvio-wasm-timer. Revisit when fluvio drops fluvio-wasm-timer.
     { id = "RUSTSEC-2026-0441", reason = "unmaintained pin-utils; transitive via fluvio -> fluvio-future -> fluvio-wasm-timer; no patched release" },
+    # 2026-11-10: sqlx-sqlite 0.8.6 and 0.9.0 cap libsqlite3-sys below 0.31 and 0.38; the patched
+    # bundled SQLite needs >=0.39. Exposure is limited to opening a db plus -wal pair written by an
+    # untrusted party. Revisit when sqlx-sqlite allows libsqlite3-sys >=0.39.
+    { id = "RUSTSEC-2026-0459", reason = "bundled SQLite in libsqlite3-sys 0.30; sqlx-sqlite caps it below the patched 0.39; local untrusted db+wal only" },
 ]
 
 [licenses]
