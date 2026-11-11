@@ -28,6 +28,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 futures = "0.3"
+async-trait = { workspace = true }
 photon-telemetry = { workspace = true, features = ["recording"] }
 tempfile = { workspace = true }
 
