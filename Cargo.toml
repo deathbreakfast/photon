@@ -43,7 +43,7 @@ photon-backend-fluvio = { version = "0.1.4", path = "photon-backend-fluvio" }
 photon-backend-sqlite = { version = "0.1.4", path = "photon-backend-sqlite" }
 photon = { package = "uf-photon", version = "0.1.4", path = "photon" }
 tempfile = "3"
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "postgres"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "postgres"] }
 async-trait = "0.1"
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }

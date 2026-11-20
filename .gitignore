@@ -10,3 +10,7 @@ profiling/photon-bench/reports-local/
 
 # Local bench output; decision-grade results aren't kept in this repo
 /profiling/photon-bench/reports/
+
+# Written at the repo root by ci.yml's coverage job (cargo llvm-cov)
+/lcov.info
+/coverage-summary.txt
