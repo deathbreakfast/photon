@@ -61,7 +61,10 @@ pub enum PhotonError {
     /// Persistence / store error (ops metadata adapters).
     ///
     /// Prefer [`PhotonError::persistence`] when an underlying store error exists.
-    #[deprecated(note = "use PhotonError::persistence(...) for sourced failures")]
+    #[deprecated(
+        since = "0.1.4",
+        note = "use PhotonError::persistence(...) for sourced failures"
+    )]
     #[error("persistence error: {0}")]
     PersistenceError(String),
 
