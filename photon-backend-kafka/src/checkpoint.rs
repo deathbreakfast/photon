@@ -119,12 +119,7 @@ impl CheckpointStore {
         if !self.config.is_sharded() {
             let key = checkpoint_key(subscription_name, topic_name, None);
             return Ok(load_i64(&self.cache, &key)?
-                .map(|seq| {
-                    let mut map = HashMap::new();
-                    map.insert(0, seq);
-                    map
-                })
-                .unwrap_or_default());
+                .map_or_else(HashMap::new, |seq| HashMap::from([(0, seq)])));
         }
 
         let key = checkpoint_key_unkeyed_shards(subscription_name, topic_name);
