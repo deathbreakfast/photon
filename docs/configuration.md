@@ -91,7 +91,7 @@ Defined in `photon-macros/src/topic.rs`. Full usage: [`topic` macro rustdoc](htt
 | `shards` | no | integer | Virtual shard count for group topics (default 32). |
 | `shard_by` | no | field name | JSON field for shard routing when publish has no explicit key. |
 
-`schema_json` on [`TopicDescriptor`](../../photon_backend/struct.TopicDescriptor.html) is reserved metadata (macro emits `"{}"`); not validated at publish time. Expansion details: [`docs/macro-expansion.md`](macro-expansion.md).
+`schema_json` on [`TopicDescriptor`](../../photon_backend/struct.TopicDescriptor.html) lists the struct's serialized field names and marks `#[photon(personal)]` fields with `"x-personal": true` (`TopicDescriptor::personal_fields()` returns them); it is metadata only and not validated at publish time. Expansion details: [`docs/macro-expansion.md`](macro-expansion.md).
 
 ### `#[photon::subscribe]`
 

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
-use photon_backend::StoragePort;
+use photon_backend::{ListEventsQuery, StoragePort};
 use photon_backend_sqlite::SqliteStoragePort;
 use sqlx::Row;
 use tempfile::NamedTempFile;
@@ -296,4 +296,128 @@ async fn sqlite_open_rejects_directory_path() {
     let dir = tempfile::tempdir().expect("tempdir");
     let result = SqliteStoragePort::open(dir.path().to_str().expect("utf8")).await;
     assert!(result.is_err(), "directory is not a sqlite file");
+}
+
+async fn append_n(port: &SqliteStoragePort, topic: &str, key: Option<&str>, n: usize) {
+    for i in 0..n {
+        port.append(
+            topic,
+            key,
+            serde_json::json!({}),
+            serde_json::json!({"n": i}),
+        )
+        .await
+        .expect("append");
+    }
+}
+
+/// A timestamp strictly between the events appended before and after it.
+async fn time_mark() -> chrono::DateTime<chrono::Utc> {
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    let mark = chrono::Utc::now();
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    mark
+}
+
+async fn seqs(port: &SqliteStoragePort, query: &ListEventsQuery) -> Vec<i64> {
+    port.list_events(query)
+        .await
+        .expect("list_events")
+        .iter()
+        .map(|e| e.seq)
+        .collect()
+}
+
+#[tokio::test]
+async fn sqlite_count_events_counts_a_day_by_topic_key_and_since() {
+    let (port, _file) = open_temp_port().await;
+    assert!(port.capabilities().supports_count_events);
+    append_n(&port, "test.count", None, 412).await;
+    append_n(&port, "test.count.keyed", Some("alice"), 3).await;
+    append_n(&port, "test.count.keyed", Some("bob"), 2).await;
+
+    let day_ago = chrono::Utc::now() - chrono::Duration::hours(24);
+    let count = |topic, key, since| port.count_events(topic, key, since);
+    assert_eq!(
+        count(Some("test.count"), None, Some(day_ago))
+            .await
+            .unwrap(),
+        Some(412)
+    );
+    assert_eq!(
+        count(Some("test.count.keyed"), Some("alice"), None)
+            .await
+            .unwrap(),
+        Some(3)
+    );
+    assert_eq!(count(None, None, Some(day_ago)).await.unwrap(), Some(417));
+
+    let later = time_mark().await;
+    assert_eq!(count(None, None, Some(later)).await.unwrap(), Some(0));
+    append_n(&port, "test.count", None, 1).await;
+    assert_eq!(
+        count(Some("test.count"), None, Some(later)).await.unwrap(),
+        Some(1)
+    );
+}
+
+#[tokio::test]
+async fn sqlite_list_events_returns_a_time_range_newest_first() {
+    let (port, _file) = open_temp_port().await;
+    let topic = "test.range";
+    append_n(&port, topic, None, 3).await;
+    let start = time_mark().await;
+    append_n(&port, topic, None, 4).await;
+    let end = time_mark().await;
+    append_n(&port, topic, None, 2).await;
+    append_n(&port, "test.range.other", None, 1).await;
+
+    let query = ListEventsQuery {
+        topic: Some(topic.into()),
+        since: Some(start),
+        until: Some(end),
+        newest_first: true,
+        limit: 100,
+        ..ListEventsQuery::default()
+    };
+    assert_eq!(seqs(&port, &query).await, vec![7, 6, 5, 4]);
+
+    let oldest_first = ListEventsQuery {
+        newest_first: false,
+        ..query.clone()
+    };
+    assert_eq!(seqs(&port, &oldest_first).await, vec![4, 5, 6, 7]);
+
+    let cross_topic = port
+        .list_events(&ListEventsQuery {
+            topic: None,
+            ..query
+        })
+        .await
+        .expect("cross-topic");
+    assert_eq!(cross_topic.len(), 4);
+    assert!(cross_topic
+        .windows(2)
+        .all(|w| w[0].created_at >= w[1].created_at));
+}
+
+#[tokio::test]
+async fn sqlite_list_events_pages_with_seq_cursors_both_ways() {
+    let (port, _file) = open_temp_port().await;
+    let topic = "test.paging";
+    append_n(&port, topic, None, 10).await;
+    let page = |after_seq, before_seq| ListEventsQuery {
+        topic: Some(topic.into()),
+        after_seq,
+        before_seq,
+        newest_first: true,
+        limit: 3,
+        ..ListEventsQuery::default()
+    };
+
+    assert_eq!(seqs(&port, &page(None, None)).await, vec![10, 9, 8]);
+    assert_eq!(seqs(&port, &page(None, Some(8))).await, vec![7, 6, 5]);
+    assert_eq!(seqs(&port, &page(Some(7), None)).await, vec![10, 9, 8]);
+    assert_eq!(seqs(&port, &page(Some(4), None)).await, vec![7, 6, 5]);
+    assert_eq!(seqs(&port, &page(Some(2), Some(5))).await, vec![4, 3]);
 }

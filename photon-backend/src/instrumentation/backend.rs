@@ -4,6 +4,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use futures::stream::Stream;
 use serde_json::Value;
 
@@ -11,6 +12,7 @@ use crate::backend::PhotonBackend;
 use crate::error::Result;
 use crate::models::Event;
 use crate::registry::TopicRegistry;
+use crate::storage::ListEventsQuery;
 
 use super::metrics;
 
@@ -99,6 +101,25 @@ impl PhotonBackend for InstrumentedPhotonBackend {
 
     async fn list_recent(&self, limit: usize) -> Result<Vec<Event>> {
         self.inner.list_recent(limit).await
+    }
+
+    async fn list_events(&self, query: &ListEventsQuery) -> Result<Vec<Event>> {
+        self.inner.list_events(query).await
+    }
+
+    async fn count_by_topic(
+        &self,
+        topic_name: &str,
+        topic_key: Option<&str>,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Option<u64>> {
+        self.inner
+            .count_by_topic(topic_name, topic_key, since)
+            .await
+    }
+
+    async fn count_recent(&self, since: Option<DateTime<Utc>>) -> Result<Option<u64>> {
+        self.inner.count_recent(since).await
     }
 
     fn registry(&self) -> &TopicRegistry {

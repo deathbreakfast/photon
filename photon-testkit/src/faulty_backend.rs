@@ -4,10 +4,11 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use futures::{Stream, StreamExt};
 use photon_backend::{
-    BackendCapabilities, Event, GenericPhotonBackend, InProcStoragePort, PhotonBackend,
-    PhotonError, Result, StoragePort, TopicRegistry, TransportCrypto,
+    BackendCapabilities, Event, GenericPhotonBackend, InProcStoragePort, ListEventsQuery,
+    PhotonBackend, PhotonError, Result, StoragePort, TopicRegistry, TransportCrypto,
 };
 use photon_runtime::Photon;
 
@@ -128,6 +129,25 @@ impl PhotonBackend for FaultyBackend {
 
     async fn get_event(&self, event_id: &str) -> Result<Option<Event>> {
         self.inner.get_event(event_id).await
+    }
+
+    async fn list_events(&self, query: &ListEventsQuery) -> Result<Vec<Event>> {
+        self.inner.list_events(query).await
+    }
+
+    async fn count_by_topic(
+        &self,
+        topic_name: &str,
+        topic_key: Option<&str>,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Option<u64>> {
+        self.inner
+            .count_by_topic(topic_name, topic_key, since)
+            .await
+    }
+
+    async fn count_recent(&self, since: Option<DateTime<Utc>>) -> Result<Option<u64>> {
+        self.inner.count_recent(since).await
     }
 
     fn registry(&self) -> &TopicRegistry {

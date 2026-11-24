@@ -20,10 +20,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use futures::stream::Stream;
 use photon::storage::StorageCapabilities;
 use photon::{
-    topic, Event, InProcStoragePort, Photon, PhotonError, Result, StoragePort, TransportCrypto,
+    topic, Event, InProcStoragePort, ListEventsQuery, Photon, PhotonError, Result, StoragePort,
+    TransportCrypto,
 };
 use serde_json::Value;
 
@@ -86,20 +88,17 @@ impl StoragePort for AuditingStoragePort {
         self.inner.get_event(event_id).await
     }
 
-    async fn list_by_topic(
-        &self,
-        topic_name: &str,
-        topic_key: Option<&str>,
-        after_seq: Option<i64>,
-        limit: usize,
-    ) -> Result<Vec<Event>> {
-        self.inner
-            .list_by_topic(topic_name, topic_key, after_seq, limit)
-            .await
+    async fn list_events(&self, query: &ListEventsQuery) -> Result<Vec<Event>> {
+        self.inner.list_events(query).await
     }
 
-    async fn list_recent(&self, limit: usize) -> Result<Vec<Event>> {
-        self.inner.list_recent(limit).await
+    async fn count_events(
+        &self,
+        topic_name: Option<&str>,
+        topic_key: Option<&str>,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Option<u64>> {
+        self.inner.count_events(topic_name, topic_key, since).await
     }
 
     async fn load_checkpoint(

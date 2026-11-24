@@ -3,5 +3,5 @@
 mod contract;
 mod harness;
 
-pub use contract::run_backend_contract;
+pub use contract::{run_backend_contract, run_count_and_list_contract};
 pub use harness::BackendAuthorHarness;

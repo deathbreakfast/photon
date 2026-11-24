@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use async_stream::stream;
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use futures::stream::Stream;
 use serde_json::Value;
@@ -19,11 +19,25 @@ use uuid::Uuid;
 
 use super::partition::topic_filter_matches;
 use super::port::{StorageCapabilities, StoragePort};
+use super::query::ListEventsQuery;
 use crate::error::Result;
 use crate::event::{open_stored_event, seal_event_for_storage, TransportCrypto};
 use crate::models::Event;
 
 const DEFAULT_REPLAY_BUFFER_SIZE: usize = 1000;
+
+/// Whether a stored (sealed) event passes every filter in `query`; metadata stays in clear.
+fn list_query_matches(query: &ListEventsQuery, event: &Event) -> bool {
+    query.topic.as_deref().is_none_or(|t| event.topic_name == t)
+        && query
+            .key
+            .as_deref()
+            .is_none_or(|k| event.topic_key.as_deref() == Some(k))
+        && query.after_seq.is_none_or(|after| event.seq > after)
+        && query.before_seq.is_none_or(|before| event.seq < before)
+        && query.since.is_none_or(|since| event.created_at >= since)
+        && query.until.is_none_or(|until| event.created_at < until)
+}
 
 fn partition_key(topic_name: &str, topic_key: Option<&str>) -> String {
     format!("{}:{}", topic_name, topic_key.unwrap_or("__null__"))
@@ -232,47 +246,51 @@ impl StoragePort for InProcStoragePort {
             .transpose()
     }
 
-    async fn list_by_topic(
-        &self,
-        topic_name: &str,
-        topic_key: Option<&str>,
-        after_seq: Option<i64>,
-        limit: usize,
-    ) -> Result<Vec<Event>> {
-        if limit == 0 {
+    async fn list_events(&self, query: &ListEventsQuery) -> Result<Vec<Event>> {
+        if query.limit == 0 {
             return Ok(Vec::new());
         }
-        let after = after_seq.unwrap_or(0);
-        let mut matched: Vec<Event> = Vec::new();
-        for entry in self.events.iter() {
-            let sealed = entry.value();
-            if sealed.topic_name != topic_name {
-                continue;
-            }
-            if topic_key.is_some_and(|k| sealed.topic_key.as_deref() != Some(k)) {
-                continue;
-            }
-            if sealed.seq <= after {
-                continue;
-            }
-            matched.push(open_stored_event(&self.crypto, sealed.clone())?);
+        let mut matched: Vec<Event> = self
+            .events
+            .iter()
+            .filter(|entry| list_query_matches(query, entry.value()))
+            .map(|entry| entry.value().clone())
+            .collect();
+        if query.orders_by_seq() {
+            matched.sort_by_key(|e| e.seq);
+        } else {
+            matched.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.seq.cmp(&b.seq)));
         }
-        matched.sort_by_key(|e| e.seq);
-        matched.truncate(limit);
-        Ok(matched)
+        if !query.pages_from_oldest() {
+            matched.reverse();
+        }
+        matched.truncate(query.limit);
+        if query.pages_from_oldest() == query.newest_first {
+            matched.reverse();
+        }
+        matched
+            .into_iter()
+            .map(|sealed| open_stored_event(&self.crypto, sealed))
+            .collect()
     }
 
-    async fn list_recent(&self, limit: usize) -> Result<Vec<Event>> {
-        if limit == 0 {
-            return Ok(Vec::new());
-        }
-        let mut matched: Vec<Event> = Vec::with_capacity(self.events.len().min(limit * 2));
-        for entry in self.events.iter() {
-            matched.push(open_stored_event(&self.crypto, entry.value().clone())?);
-        }
-        matched.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.seq.cmp(&a.seq)));
-        matched.truncate(limit);
-        Ok(matched)
+    async fn count_events(
+        &self,
+        topic_name: Option<&str>,
+        topic_key: Option<&str>,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Option<u64>> {
+        let count = self
+            .events
+            .iter()
+            .filter(|entry| {
+                let event = entry.value();
+                topic_name.is_none_or(|t| event.topic_name == t)
+                    && topic_key.is_none_or(|k| event.topic_key.as_deref() == Some(k))
+                    && since.is_none_or(|s| event.created_at >= s)
+            })
+            .count();
+        Ok(Some(u64::try_from(count).unwrap_or(u64::MAX)))
     }
 
     async fn load_checkpoint(
@@ -418,5 +436,130 @@ mod tests {
             .await
             .expect("zero limit");
         assert!(empty.is_empty());
+    }
+
+    async fn append_n(port: &InProcStoragePort, topic: &str, key: Option<&str>, n: usize) {
+        for i in 0..n {
+            port.append(
+                topic,
+                key,
+                serde_json::json!({}),
+                serde_json::json!({"n": i}),
+            )
+            .await
+            .expect("append");
+        }
+    }
+
+    /// A timestamp strictly between the events appended before and after it.
+    async fn time_mark() -> chrono::DateTime<Utc> {
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        let mark = Utc::now();
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        mark
+    }
+
+    #[tokio::test]
+    async fn count_events_counts_a_day_by_topic_key_and_since() {
+        let port = InProcStoragePort::new(TransportCrypto::from_bytes([3; 32]));
+        append_n(&port, "test.count", None, 412).await;
+        append_n(&port, "test.count.keyed", Some("alice"), 3).await;
+        append_n(&port, "test.count.keyed", Some("bob"), 2).await;
+
+        let day_ago = Utc::now() - chrono::Duration::hours(24);
+        let count = |topic, key, since| port.count_events(topic, key, since);
+        assert_eq!(
+            count(Some("test.count"), None, Some(day_ago))
+                .await
+                .unwrap(),
+            Some(412)
+        );
+        assert_eq!(
+            count(Some("test.count.keyed"), Some("alice"), None)
+                .await
+                .unwrap(),
+            Some(3)
+        );
+        assert_eq!(count(None, None, Some(day_ago)).await.unwrap(), Some(417));
+
+        let later = time_mark().await;
+        assert_eq!(count(None, None, Some(later)).await.unwrap(), Some(0));
+        append_n(&port, "test.count", None, 1).await;
+        assert_eq!(
+            count(Some("test.count"), None, Some(later)).await.unwrap(),
+            Some(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn list_events_returns_a_time_range_newest_first() {
+        let port = InProcStoragePort::new(TransportCrypto::from_bytes([4; 32]));
+        let topic = "test.range";
+        append_n(&port, topic, None, 3).await;
+        let start = time_mark().await;
+        append_n(&port, topic, None, 4).await;
+        let end = time_mark().await;
+        append_n(&port, topic, None, 2).await;
+
+        let query = ListEventsQuery {
+            topic: Some(topic.into()),
+            since: Some(start),
+            until: Some(end),
+            newest_first: true,
+            limit: 100,
+            ..ListEventsQuery::default()
+        };
+        let seqs: Vec<i64> = port
+            .list_events(&query)
+            .await
+            .unwrap()
+            .iter()
+            .map(|e| e.seq)
+            .collect();
+        assert_eq!(seqs, vec![7, 6, 5, 4]);
+
+        let cross_topic = port
+            .list_events(&ListEventsQuery {
+                topic: None,
+                ..query
+            })
+            .await
+            .unwrap();
+        assert_eq!(cross_topic.len(), 4);
+        assert!(cross_topic
+            .windows(2)
+            .all(|w| w[0].created_at >= w[1].created_at));
+    }
+
+    #[tokio::test]
+    async fn list_events_pages_with_seq_cursors_both_ways() {
+        let port = InProcStoragePort::new(TransportCrypto::from_bytes([5; 32]));
+        let topic = "test.paging";
+        append_n(&port, topic, None, 10).await;
+        let port = &port;
+        let page = |after_seq, before_seq| {
+            let query = ListEventsQuery {
+                topic: Some(topic.into()),
+                after_seq,
+                before_seq,
+                newest_first: true,
+                limit: 3,
+                ..ListEventsQuery::default()
+            };
+            async move {
+                port.list_events(&query)
+                    .await
+                    .unwrap()
+                    .iter()
+                    .map(|e| e.seq)
+                    .collect::<Vec<_>>()
+            }
+        };
+
+        assert_eq!(page(None, None).await, vec![10, 9, 8]);
+        assert_eq!(page(None, Some(8)).await, vec![7, 6, 5]);
+        assert_eq!(page(Some(7), None).await, vec![10, 9, 8]);
+        assert_eq!(page(Some(4), None).await, vec![7, 6, 5]);
+        assert_eq!(page(Some(2), Some(5)).await, vec![4, 3]);
     }
 }
