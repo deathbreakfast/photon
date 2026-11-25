@@ -79,6 +79,8 @@ pub use shard_router::{
     group_publish_storage_key, is_shard_storage_key, parse_shard_storage_key, routing_key,
     shard_id, shard_storage_key, SHARD_KEY_PREFIX,
 };
-pub use storage::{topic_filter_matches, InProcStoragePort, StorageCapabilities, StoragePort};
+pub use storage::{
+    topic_filter_matches, InProcStoragePort, ListEventsQuery, StorageCapabilities, StoragePort,
+};
 
 pub use quark::inventory;

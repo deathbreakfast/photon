@@ -8,9 +8,10 @@ use std::sync::Arc;
 use futures::stream::Stream;
 use photon_core::IdentityFactory;
 
+use chrono::{DateTime, Utc};
 use photon_backend::{
-    BackendCapabilities, Event, ExecutorServices, PhotonBackend, ReclaimReport, Result,
-    StoragePort, TopicRegistry,
+    BackendCapabilities, Event, ExecutorServices, ListEventsQuery, PhotonBackend, ReclaimReport,
+    Result, StoragePort, TopicRegistry,
 };
 
 use crate::admin::collect_admin_snapshot;
@@ -283,6 +284,47 @@ impl Photon {
     /// Returns an error if storage fails.
     pub async fn list_recent_events(&self, limit: usize) -> Result<Vec<Event>> {
         PhotonBackend::list_recent(self.backend.as_ref(), limit).await
+    }
+
+    /// Filtered page of events: topic, key, a time range, seq cursors in either direction.
+    ///
+    /// See [`ListEventsQuery`] for the filters, the order and how seq cursors page. Returns an
+    /// empty vec when the storage adapter does not support listing (`supports_list_events` is
+    /// false).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the topic name is invalid or storage fails.
+    pub async fn list_events(&self, query: &ListEventsQuery) -> Result<Vec<Event>> {
+        PhotonBackend::list_events(self.backend.as_ref(), query).await
+    }
+
+    /// Count a topic's events, optionally for one partition key and since a time.
+    ///
+    /// Returns `Ok(None)` when the storage adapter cannot count (`supports_count_events` is
+    /// false); show an estimate or hide the figure then.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the topic name is invalid or storage fails.
+    pub async fn count_events_by_topic(
+        &self,
+        topic_name: &str,
+        topic_key: Option<&str>,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Option<u64>> {
+        PhotonBackend::count_by_topic(self.backend.as_ref(), topic_name, topic_key, since).await
+    }
+
+    /// Count events across all topics, optionally since a time.
+    ///
+    /// Returns `Ok(None)` when the storage adapter cannot count.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if storage fails.
+    pub async fn count_recent_events(&self, since: Option<DateTime<Utc>>) -> Result<Option<u64>> {
+        PhotonBackend::count_recent(self.backend.as_ref(), since).await
     }
 
     /// Return the registered topic catalog.

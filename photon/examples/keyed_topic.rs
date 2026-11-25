@@ -12,9 +12,12 @@ use futures::StreamExt;
 use photon::{topic, Photon, SubscribeOpts};
 
 // keyed_by routes events to partitions; subscribe can filter to one key.
+// #[photon(personal)] marks `email` in the topic schema so admin UIs mask it.
 #[topic(name = "examples.orders", keyed_by = "customer_id")]
 pub struct OrderPlaced {
     pub customer_id: String,
+    #[photon(personal)]
+    pub email: String,
     pub amount_cents: u64,
 }
 
@@ -24,6 +27,10 @@ async fn main() -> anyhow::Result<()> {
 
     let photon = Photon::builder().auto_registry().build()?;
 
+    if let Some(descriptor) = photon.registry().get("examples.orders") {
+        tracing::info!(personal = ?descriptor.personal_fields(), "personal fields");
+    }
+
     // Ephemeral typed stream — only "alice" partitions are delivered.
     let opts = SubscribeOpts::default_ephemeral().topic_key_filter("alice");
     let mut stream = OrderPlaced::subscribe_on(&photon, opts).await?;
@@ -31,12 +38,14 @@ async fn main() -> anyhow::Result<()> {
     // Publish bob first (filtered out), then alice (should arrive).
     OrderPlaced {
         customer_id: "bob".into(),
+        email: "bob@example.com".into(),
         amount_cents: 200,
     }
     .publish_on(&photon)
     .await?;
     OrderPlaced {
         customer_id: "alice".into(),
+        email: "alice@example.com".into(),
         amount_cents: 100,
     }
     .publish_on(&photon)

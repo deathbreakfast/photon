@@ -1,5 +1,9 @@
 //! Topic descriptor for auto-registration.
 
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::delivery_mode::{DeliveryMode, ShardConfig};
@@ -13,10 +17,12 @@ pub struct TopicDescriptor {
     pub topic_name: &'static str,
     /// Optional key field name.
     pub keyed_by: Option<&'static str>,
-    /// Reserved JSON schema metadata placeholder.
+    /// JSON schema metadata written by `#[photon::topic]`.
     ///
-    /// Currently always `"{}"` from `#[photon::topic]`. **Not validated** at publish time;
-    /// do not infer schema enforcement from this field.
+    /// For a struct with named fields: `{"type":"object","properties":{..}}` with one entry per
+    /// serialized field name, and `"x-personal": true` on fields marked `#[photon(personal)]`
+    /// (see [`Self::personal_fields`]). Other shapes get `"{}"`. **Not validated** at publish
+    /// time; do not infer schema enforcement from this field.
     pub schema_json: &'static str,
     /// Publish routing mode (broadcast default).
     pub delivery: DeliveryMode,
@@ -64,6 +70,40 @@ impl TopicDescriptor {
         self.delivery == DeliveryMode::ConsumerGroup
     }
 
+    /// Serialized names of the payload fields marked `#[photon(personal)]`, in name order.
+    ///
+    /// Read from the `"x-personal": true` properties in [`Self::schema_json`]. Photon stores the
+    /// mark only; admin UIs use it to mask those values until someone reveals them.
+    #[must_use]
+    pub fn personal_fields(&self) -> Vec<&'static str> {
+        #[derive(Deserialize)]
+        struct Schema<'a> {
+            #[serde(borrow, default)]
+            properties: BTreeMap<Name<'a>, Property>,
+        }
+        #[derive(Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+        struct Name<'a>(#[serde(borrow)] Cow<'a, str>);
+        #[derive(Deserialize)]
+        struct Property {
+            #[serde(rename = "x-personal", default)]
+            personal: bool,
+        }
+
+        let Ok(schema) = serde_json::from_str::<Schema<'static>>(self.schema_json) else {
+            return Vec::new();
+        };
+        schema
+            .properties
+            .into_iter()
+            .filter(|(_, property)| property.personal)
+            // The macro rejects personal names that need JSON escapes, so these borrow.
+            .filter_map(|(Name(name), _)| match name {
+                Cow::Borrowed(name) => Some(name),
+                Cow::Owned(_) => None,
+            })
+            .collect()
+    }
+
     /// Get schema as parsed JSON.
     #[must_use]
     pub fn schema_value(&self) -> Option<Value> {
@@ -77,5 +117,33 @@ crate::inventory::collect!(TopicDescriptor);
 impl quark::Registrable for TopicDescriptor {
     fn registry_key(&self) -> &str {
         self.topic_name
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn personal_fields_reads_marked_properties() {
+        let descriptor = TopicDescriptor::new(
+            "test.signup",
+            None,
+            r#"{"type":"object","properties":{"user_id":{},"we\"ird":{},"phone":{"x-personal":true},"email":{"x-personal":true}}}"#,
+        );
+        assert_eq!(descriptor.personal_fields(), vec!["email", "phone"]);
+    }
+
+    #[test]
+    fn personal_fields_is_empty_without_marks() {
+        let none: Vec<&str> = Vec::new();
+        assert_eq!(
+            TopicDescriptor::new("test.empty", None, "{}").personal_fields(),
+            none
+        );
+        assert_eq!(
+            TopicDescriptor::new("test.bad", None, "not json").personal_fields(),
+            none
+        );
     }
 }
