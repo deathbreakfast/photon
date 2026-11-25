@@ -2528,6 +2528,7 @@ version = "0.1.4"
 dependencies = [
  "proc-macro2",
  "quote",
+ "serde_json",
  "syn 2.0.119",
 ]
 
@@ -2561,6 +2562,7 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
  "futures",
  "photon-backend",
  "photon-backend-fluvio",
@@ -3993,6 +3995,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
  "futures",
  "photon-backend",
  "photon-backend-fluvio",

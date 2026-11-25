@@ -27,6 +27,36 @@ mod topic;
 /// | `keyed_by = "field"` | Partition key field on the struct |
 /// | `shards = N` | Virtual shard count for consumer groups |
 ///
+/// On struct fields:
+///
+/// | Field attribute | Purpose |
+/// |-----------------|---------|
+/// | `#[photon(personal)]` | Mark the field as personal data in the topic schema |
+///
+/// # Personal fields
+///
+/// `#[photon(personal)]` writes `"x-personal": true` on that property in the generated
+/// `schema_json`; [`TopicDescriptor::personal_fields`](https://docs.rs/uf-photon/latest/photon/struct.TopicDescriptor.html#method.personal_fields)
+/// lists the marked names. The Photon admin app masks those values on event pages until someone
+/// with access reveals them for a recorded reason. Photon stores and delivers the payload
+/// unchanged; masking happens in the app.
+///
+/// The mark lives on the declaration, so it is reviewed and versioned with the code. It uses the
+/// serialized name: `#[serde(rename = "…")]` on the field is honoured, and a personal field on a
+/// struct with `#[serde(rename_all)]` needs its own `rename`. Any other key inside
+/// `#[photon(...)]` is a compile error.
+///
+/// ```ignore
+/// use photon::topic;
+///
+/// #[topic(name = "accounts.signed_up", keyed_by = "account_id")]
+/// pub struct SignedUp {
+///     pub account_id: String,
+///     #[photon(personal)]
+///     pub email: String,
+/// }
+/// ```
+///
 /// Full attribute reference: [`photon::config`](https://docs.rs/uf-photon/latest/photon/config/#photon-topic).
 /// Getting started: [Embedded](https://docs.rs/uf-photon/latest/photon/#embedded-one-binary).
 ///

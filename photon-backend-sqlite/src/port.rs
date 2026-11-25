@@ -6,19 +6,19 @@ use std::time::Duration;
 
 use async_stream::stream;
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use futures::stream::Stream;
 use serde_json::Value;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions};
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row, Sqlite};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use photon_backend::models::Event;
 use photon_backend::{
-    open_stored_event, seal_event_for_storage, topic_filter_matches, PhotonError, Result,
-    StorageCapabilities, StoragePort, SubscriptionControl, TransportCrypto,
+    open_stored_event, seal_event_for_storage, topic_filter_matches, ListEventsQuery, PhotonError,
+    Result, StorageCapabilities, StoragePort, SubscriptionControl, TransportCrypto,
 };
 
 use crate::config::sqlite_path_from_env;
@@ -153,6 +153,19 @@ impl SqliteStoragePort {
         .map_err(map_sqlx)?;
 
         sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_events_topic_created
+             ON events(topic_name, created_at)",
+        )
+        .execute(pool)
+        .await
+        .map_err(map_sqlx)?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at)")
+            .execute(pool)
+            .await
+            .map_err(map_sqlx)?;
+
+        sqlx::query(
             "CREATE TABLE IF NOT EXISTS checkpoints (
                 checkpoint_key TEXT PRIMARY KEY,
                 last_seq INTEGER NOT NULL
@@ -255,47 +268,53 @@ impl SqliteStoragePort {
             .transpose()
     }
 
-    async fn fetch_list_by_topic(
-        &self,
-        topic_name: &str,
-        topic_key: Option<&str>,
-        after_seq: Option<i64>,
-        limit: usize,
-    ) -> Result<Vec<Event>> {
-        if limit == 0 {
+    async fn fetch_list_events(&self, query: &ListEventsQuery) -> Result<Vec<Event>> {
+        if query.limit == 0 {
             return Ok(Vec::new());
         }
-        let after = after_seq.unwrap_or(0);
-        let limit_i = i64::try_from(limit).unwrap_or(i64::MAX);
-        let rows = if let Some(key) = topic_key {
-            sqlx::query(
-                "SELECT event_id, topic_name, topic_key, seq, actor_json, payload_json, created_at
-                 FROM events
-                 WHERE topic_name = ? AND topic_key = ? AND seq > ?
-                 ORDER BY seq ASC
-                 LIMIT ?",
-            )
-            .bind(topic_name)
-            .bind(key)
-            .bind(after)
-            .bind(limit_i)
-            .fetch_all(&self.pool)
-            .await
-        } else {
-            sqlx::query(
-                "SELECT event_id, topic_name, topic_key, seq, actor_json, payload_json, created_at
-                 FROM events
-                 WHERE topic_name = ? AND seq > ?
-                 ORDER BY seq ASC
-                 LIMIT ?",
-            )
-            .bind(topic_name)
-            .bind(after)
-            .bind(limit_i)
-            .fetch_all(&self.pool)
-            .await
+        let from_oldest = query.pages_from_oldest();
+        let order = |ascending: bool| {
+            let dir = if ascending { "ASC" } else { "DESC" };
+            if query.orders_by_seq() {
+                format!("seq {dir}")
+            } else {
+                format!("created_at {dir}, seq {dir}")
+            }
+        };
+        let mut builder = QueryBuilder::<Sqlite>::new(
+            "SELECT event_id, topic_name, topic_key, seq, actor_json, payload_json, created_at
+             FROM (SELECT event_id, topic_name, topic_key, seq, actor_json, payload_json, created_at
+                   FROM events WHERE 1 = 1",
+        );
+        push_event_filters(
+            &mut builder,
+            query.topic.as_deref(),
+            query.key.as_deref(),
+            query.since,
+        );
+        if let Some(after) = query.after_seq {
+            builder.push(" AND seq > ").push_bind(after);
         }
-        .map_err(map_sqlx)?;
+        if let Some(before) = query.before_seq {
+            builder.push(" AND seq < ").push_bind(before);
+        }
+        if let Some(until) = query.until {
+            builder
+                .push(" AND created_at < ")
+                .push_bind(until.to_rfc3339());
+        }
+        builder
+            .push(" ORDER BY ")
+            .push(order(from_oldest))
+            .push(" LIMIT ")
+            .push_bind(i64::try_from(query.limit).unwrap_or(i64::MAX))
+            .push(") ORDER BY ")
+            .push(order(!query.newest_first));
+        let rows = builder
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_err(map_sqlx)?;
 
         rows.iter()
             .map(row_to_event)
@@ -303,26 +322,45 @@ impl SqliteStoragePort {
             .collect()
     }
 
-    async fn fetch_list_recent(&self, limit: usize) -> Result<Vec<Event>> {
-        if limit == 0 {
-            return Ok(Vec::new());
-        }
-        let limit_i = i64::try_from(limit).unwrap_or(i64::MAX);
-        let rows = sqlx::query(
-            "SELECT event_id, topic_name, topic_key, seq, actor_json, payload_json, created_at
-             FROM events
-             ORDER BY created_at DESC, seq DESC
-             LIMIT ?",
-        )
-        .bind(limit_i)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sqlx)?;
+    async fn fetch_count(
+        &self,
+        topic_name: Option<&str>,
+        topic_key: Option<&str>,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<u64> {
+        let mut builder = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM events WHERE 1 = 1");
+        push_event_filters(&mut builder, topic_name, topic_key, since);
+        let count: i64 = builder
+            .build_query_scalar()
+            .fetch_one(&self.pool)
+            .await
+            .map_err(map_sqlx)?;
+        Ok(u64::try_from(count).unwrap_or(0))
+    }
+}
 
-        rows.iter()
-            .map(row_to_event)
-            .map(|event| event.and_then(|event| open_stored_event(&self.crypto, event)))
-            .collect()
+/// Append the topic, key and `since` filters shared by listing and counting.
+///
+/// `created_at` is stored as `to_rfc3339()` text (UTC, `+00:00`), whose text order matches time
+/// order, so binding `since` in the same format compares correctly.
+fn push_event_filters(
+    builder: &mut QueryBuilder<Sqlite>,
+    topic_name: Option<&str>,
+    topic_key: Option<&str>,
+    since: Option<DateTime<Utc>>,
+) {
+    if let Some(topic) = topic_name {
+        builder
+            .push(" AND topic_name = ")
+            .push_bind(topic.to_owned());
+    }
+    if let Some(key) = topic_key {
+        builder.push(" AND topic_key = ").push_bind(key.to_owned());
+    }
+    if let Some(since) = since {
+        builder
+            .push(" AND created_at >= ")
+            .push_bind(since.to_rfc3339());
     }
 }
 
@@ -477,19 +515,19 @@ impl StoragePort for SqliteStoragePort {
         self.fetch_event_by_id(event_id).await
     }
 
-    async fn list_by_topic(
-        &self,
-        topic_name: &str,
-        topic_key: Option<&str>,
-        after_seq: Option<i64>,
-        limit: usize,
-    ) -> Result<Vec<Event>> {
-        self.fetch_list_by_topic(topic_name, topic_key, after_seq, limit)
-            .await
+    async fn list_events(&self, query: &ListEventsQuery) -> Result<Vec<Event>> {
+        self.fetch_list_events(query).await
     }
 
-    async fn list_recent(&self, limit: usize) -> Result<Vec<Event>> {
-        self.fetch_list_recent(limit).await
+    async fn count_events(
+        &self,
+        topic_name: Option<&str>,
+        topic_key: Option<&str>,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Option<u64>> {
+        self.fetch_count(topic_name, topic_key, since)
+            .await
+            .map(Some)
     }
 
     async fn load_checkpoint(

@@ -18,6 +18,7 @@ use crate::backend::BackendCapabilities;
 use crate::error::{PhotonError, Result};
 use crate::models::Event;
 use crate::registry::TopicRegistry;
+use crate::storage::ListEventsQuery;
 
 /// Pause state for one subscription (durable name or consumer group id).
 ///
@@ -94,24 +95,66 @@ pub trait PhotonBackend: Send + Sync {
     /// - Returns `None` when unknown or truncated; see backend [`BackendCapabilities`].
     async fn get_event(&self, event_id: &str) -> Result<Option<Event>>;
 
-    /// Bounded page of events for one topic (ops browse).
+    /// Bounded, filtered page of events (ops browse).
+    ///
+    /// Same semantics as [`crate::storage::StoragePort::list_events`]; see
+    /// [`ListEventsQuery`] for filters, order and seq paging.
     ///
     /// Default returns empty when the adapter does not support listing.
+    async fn list_events(&self, _query: &ListEventsQuery) -> Result<Vec<Event>> {
+        Ok(Vec::new())
+    }
+
+    /// Bounded page of events for one topic (ops browse), oldest first.
+    ///
+    /// Default calls [`Self::list_events`].
     async fn list_by_topic(
         &self,
-        _topic_name: &str,
-        _topic_key: Option<&str>,
-        _after_seq: Option<i64>,
-        _limit: usize,
+        topic_name: &str,
+        topic_key: Option<&str>,
+        after_seq: Option<i64>,
+        limit: usize,
     ) -> Result<Vec<Event>> {
-        Ok(Vec::new())
+        self.list_events(&ListEventsQuery {
+            topic: Some(topic_name.to_owned()),
+            key: topic_key.map(str::to_owned),
+            after_seq,
+            limit,
+            ..ListEventsQuery::default()
+        })
+        .await
     }
 
     /// Bounded cross-topic page of newest events (ops browse).
     ///
-    /// Default returns empty when the adapter does not support listing.
-    async fn list_recent(&self, _limit: usize) -> Result<Vec<Event>> {
-        Ok(Vec::new())
+    /// Default calls [`Self::list_events`].
+    async fn list_recent(&self, limit: usize) -> Result<Vec<Event>> {
+        self.list_events(&ListEventsQuery {
+            newest_first: true,
+            limit,
+            ..ListEventsQuery::default()
+        })
+        .await
+    }
+
+    /// Count a topic's events, optionally for one partition key and since a time.
+    ///
+    /// Default returns `Ok(None)`: the adapter cannot count (see
+    /// [`BackendCapabilities::supports_count_events`]).
+    async fn count_by_topic(
+        &self,
+        _topic_name: &str,
+        _topic_key: Option<&str>,
+        _since: Option<DateTime<Utc>>,
+    ) -> Result<Option<u64>> {
+        Ok(None)
+    }
+
+    /// Count events across all topics, optionally since a time.
+    ///
+    /// Default returns `Ok(None)`: the adapter cannot count.
+    async fn count_recent(&self, _since: Option<DateTime<Utc>>) -> Result<Option<u64>> {
+        Ok(None)
     }
 
     /// Inventory-discovered topic descriptors.

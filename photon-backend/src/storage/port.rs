@@ -17,20 +17,26 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use futures::stream::Stream;
 use serde_json::Value;
 
+use super::query::ListEventsQuery;
 use crate::backend::SubscriptionControl;
 use crate::error::{PhotonError, Result};
 use crate::models::Event;
 
 /// Capabilities advertised by a storage port (surfaced via [`crate::backend::GenericPhotonBackend`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // independent feature flags, not a state machine
 pub struct StorageCapabilities {
     /// Whether [`StoragePort::get_event`] is supported.
     pub supports_get_event: bool,
-    /// Whether [`StoragePort::list_by_topic`] / [`StoragePort::list_recent`] are supported.
+    /// Whether [`StoragePort::list_events`] (and the [`StoragePort::list_by_topic`] /
+    /// [`StoragePort::list_recent`] wrappers) are supported, time-range filters included.
     pub supports_list_events: bool,
+    /// Whether [`StoragePort::count_events`] returns exact counts.
+    pub supports_count_events: bool,
     /// Maximum replay window for bounded retention adapters.
     pub max_replay_window: Option<Duration>,
     /// Stable telemetry / bench label (`mem`, `nats`, …).
@@ -47,6 +53,7 @@ impl StorageCapabilities {
         Self {
             supports_get_event: true,
             supports_list_events: true,
+            supports_count_events: true,
             max_replay_window: None,
             telemetry_label: "mem",
             supports_subscription_control: true,
@@ -59,6 +66,7 @@ impl StorageCapabilities {
         Self {
             supports_get_event: true,
             supports_list_events: true,
+            supports_count_events: true,
             max_replay_window: None,
             telemetry_label: "sqlite",
             supports_subscription_control: true,
@@ -71,6 +79,7 @@ impl StorageCapabilities {
         Self {
             supports_get_event: false,
             supports_list_events: false,
+            supports_count_events: false,
             max_replay_window: Some(Duration::from_mins(15)),
             telemetry_label: label,
             supports_subscription_control: false,
@@ -151,6 +160,19 @@ pub trait StoragePort: Send + Sync {
     /// - Returns `None` when the id is unknown or the event was truncated by retention.
     async fn get_event(&self, event_id: &str) -> Result<Option<Event>>;
 
+    /// Bounded, filtered page of events (ops browse).
+    ///
+    /// # Contract
+    ///
+    /// - When `supports_list_events` is false, returns an empty vec (brokers). The default
+    ///   implementation does that.
+    /// - Applies every filter, the order and the paging rule documented on [`ListEventsQuery`].
+    /// - Returned events are decrypted like [`Self::get_event`].
+    async fn list_events(&self, query: &ListEventsQuery) -> Result<Vec<Event>> {
+        let _ = query;
+        Ok(Vec::new())
+    }
+
     /// Bounded page of events for one topic (ops browse).
     ///
     /// # Contract
@@ -160,13 +182,23 @@ pub trait StoragePort: Send + Sync {
     /// - When `topic_key` is set, only that partition is included.
     /// - Results are ordered by `seq` ascending and capped at `limit` (zero → empty).
     /// - Returned events are decrypted like [`Self::get_event`].
+    /// - Default implementation calls [`Self::list_events`].
     async fn list_by_topic(
         &self,
         topic_name: &str,
         topic_key: Option<&str>,
         after_seq: Option<i64>,
         limit: usize,
-    ) -> Result<Vec<Event>>;
+    ) -> Result<Vec<Event>> {
+        self.list_events(&ListEventsQuery {
+            topic: Some(topic_name.to_owned()),
+            key: topic_key.map(str::to_owned),
+            after_seq,
+            limit,
+            ..ListEventsQuery::default()
+        })
+        .await
+    }
 
     /// Bounded cross-topic page of newest events (ops browse).
     ///
@@ -175,7 +207,33 @@ pub trait StoragePort: Send + Sync {
     /// - When `supports_list_events` is false, returns an empty vec (brokers).
     /// - Ordered by `created_at` descending, capped at `limit` (zero → empty).
     /// - Returned events are decrypted like [`Self::get_event`].
-    async fn list_recent(&self, limit: usize) -> Result<Vec<Event>>;
+    /// - Default implementation calls [`Self::list_events`].
+    async fn list_recent(&self, limit: usize) -> Result<Vec<Event>> {
+        self.list_events(&ListEventsQuery {
+            newest_first: true,
+            limit,
+            ..ListEventsQuery::default()
+        })
+        .await
+    }
+
+    /// Count events, optionally for one topic, one partition key and since a time.
+    ///
+    /// # Contract
+    ///
+    /// - `topic_name: None` counts across all topics; `topic_key` matches exactly when set.
+    /// - `since` keeps events with `created_at >= since`.
+    /// - Returns `Ok(None)` when the adapter cannot count (`supports_count_events` is false).
+    ///   The default implementation does that.
+    async fn count_events(
+        &self,
+        topic_name: Option<&str>,
+        topic_key: Option<&str>,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Option<u64>> {
+        let _ = (topic_name, topic_key, since);
+        Ok(None)
+    }
 
     /// Load durable subscription high-water seq.
     ///

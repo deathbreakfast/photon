@@ -95,6 +95,7 @@ pub struct AdminCheckpointSummary {
 
 /// Storage adapter capabilities surfaced for admin UIs.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // independent capability flags for the admin UI
 pub struct AdminBackendSummary {
     /// Stable telemetry label (`mem`, `nats`, …).
     pub telemetry_label: String,
@@ -102,6 +103,9 @@ pub struct AdminBackendSummary {
     pub supports_get_event: bool,
     /// Whether list/browse APIs (`list_events_by_topic` / `list_recent_events`) are supported.
     pub supports_list_events: bool,
+    /// Whether [`Photon::count_events_by_topic`](crate::Photon::count_events_by_topic) /
+    /// [`Photon::count_recent_events`](crate::Photon::count_recent_events) return exact counts.
+    pub supports_count_events: bool,
     /// Maximum replay window in seconds for bounded retention adapters.
     pub max_replay_window_secs: Option<u64>,
     /// Whether pause/resume and replay are supported ([`Photon::pause`](crate::Photon::pause)).

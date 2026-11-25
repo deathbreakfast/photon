@@ -25,7 +25,8 @@ pub use subsystem_remote_url::resolve_photon_remote_base_url;
 pub use photon_backend::delivery::DlqRecord;
 pub use photon_backend::{
     BackendCapabilities, BackendContext, EmbeddedBackend, Envelope, Event, GenericPhotonBackend,
-    GroupOpts, HandlerCtx, HandlerDescriptor, HandlerRegistry, InProcStoragePort, PhotonBackend,
-    PhotonError, Result, StoragePort, SubscribeOpts, Subscription, SubscriptionControl,
-    SubscriptionHandle, SubscriptionMode, TopicDescriptor, TopicRegistry, TransportCrypto,
+    GroupOpts, HandlerCtx, HandlerDescriptor, HandlerRegistry, InProcStoragePort, ListEventsQuery,
+    PhotonBackend, PhotonError, Result, StoragePort, SubscribeOpts, Subscription,
+    SubscriptionControl, SubscriptionHandle, SubscriptionMode, TopicDescriptor, TopicRegistry,
+    TransportCrypto,
 };

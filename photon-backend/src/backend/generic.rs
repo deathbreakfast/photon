@@ -4,6 +4,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use futures::stream::Stream;
 use serde_json::Value;
 
@@ -15,7 +16,7 @@ use crate::input::{validate_payload_size, validate_topic_name};
 use crate::models::Event;
 use crate::publish_routing::resolve_publish_target;
 use crate::registry::TopicRegistry;
-use crate::storage::{InProcStoragePort, StoragePort};
+use crate::storage::{InProcStoragePort, ListEventsQuery, StoragePort};
 
 /// Unified backend — all storage adapters install this wrapping their port.
 ///
@@ -124,27 +125,36 @@ impl PhotonBackend for GenericPhotonBackend {
         self.port.get_event(event_id).await
     }
 
-    async fn list_by_topic(
+    async fn list_events(&self, query: &ListEventsQuery) -> Result<Vec<Event>> {
+        if !self.capabilities.supports_list_events {
+            return Ok(Vec::new());
+        }
+        if let Some(topic_name) = query.topic.as_deref() {
+            validate_topic_name(topic_name)?;
+        }
+        self.port.list_events(query).await
+    }
+
+    async fn count_by_topic(
         &self,
         topic_name: &str,
         topic_key: Option<&str>,
-        after_seq: Option<i64>,
-        limit: usize,
-    ) -> Result<Vec<Event>> {
-        if !self.capabilities.supports_list_events {
-            return Ok(Vec::new());
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Option<u64>> {
+        if !self.capabilities.supports_count_events {
+            return Ok(None);
         }
         validate_topic_name(topic_name)?;
         self.port
-            .list_by_topic(topic_name, topic_key, after_seq, limit)
+            .count_events(Some(topic_name), topic_key, since)
             .await
     }
 
-    async fn list_recent(&self, limit: usize) -> Result<Vec<Event>> {
-        if !self.capabilities.supports_list_events {
-            return Ok(Vec::new());
+    async fn count_recent(&self, since: Option<DateTime<Utc>>) -> Result<Option<u64>> {
+        if !self.capabilities.supports_count_events {
+            return Ok(None);
         }
-        self.port.list_recent(limit).await
+        self.port.count_events(None, None, since).await
     }
 
     fn registry(&self) -> &TopicRegistry {

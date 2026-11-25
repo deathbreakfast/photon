@@ -10,10 +10,10 @@ pub use photon_backend::{
     map_broker_connect_err, models, redact_credentials_in_text, redact_endpoint, registry,
     sanitize_error_message, shard_router, storage, BackendCapabilities, BackendContext,
     BrokerTransportSecurity, DeliveryMode, EmbeddedBackend, Envelope, Event, GenericPhotonBackend,
-    GroupOpts, HandlerCtx, HandlerDescriptor, HandlerRegistry, InProcStoragePort, PhotonBackend,
-    PhotonError, Result, ShardConfig, StoragePort, SubscribeOpts, Subscription, SubscriptionHandle,
-    SubscriptionMode, TopicDescriptor, TopicMetadata, TopicRegistry, TransportCrypto,
-    ALLOW_INSECURE_BROKER_ENV, MAX_ERROR_MESSAGE_CHARS,
+    GroupOpts, HandlerCtx, HandlerDescriptor, HandlerRegistry, InProcStoragePort, ListEventsQuery,
+    PhotonBackend, PhotonError, Result, ShardConfig, StoragePort, SubscribeOpts, Subscription,
+    SubscriptionHandle, SubscriptionMode, TopicDescriptor, TopicMetadata, TopicRegistry,
+    TransportCrypto, ALLOW_INSECURE_BROKER_ENV, MAX_ERROR_MESSAGE_CHARS,
 };
 
 pub use photon_runtime::{

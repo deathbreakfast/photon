@@ -11,7 +11,8 @@
 //! | `subscribe` | Stream events; optional replay after `after_seq` |
 //! | `get_checkpoint_seq` / `set_checkpoint` | Durable subscription cursors |
 //! | `get_event` | Optional point lookup (`mem` / `sqlite`; brokers set `supports_get_event: false`) |
-//! | `list_by_topic` / `list_recent` | Optional ops browse (`mem` / `sqlite`; brokers set `supports_list_events: false`) |
+//! | `list_events` (`list_by_topic` / `list_recent` wrap it) | Optional ops browse with time range and seq paging (`mem` / `sqlite`; brokers set `supports_list_events: false`) |
+//! | `count_events` | Optional exact counts (`mem` / `sqlite`; brokers set `supports_count_events: false`) |
 //!
 //! ## Capabilities
 //!
@@ -19,6 +20,7 @@
 //! |-------|------------------|---------|
 //! | `supports_get_event` | `true` | `false` |
 //! | `supports_list_events` | `true` | `false` |
+//! | `supports_count_events` | `true` | `false` |
 //! | `max_replay_window` | unbounded / file-backed | ~15 min broker retention |
 //!
 //! See also: [`crate::checkpoint`], [`crate::retention`], [`crate::backend`].
@@ -26,7 +28,9 @@
 mod in_proc;
 mod partition;
 mod port;
+mod query;
 
 pub use in_proc::InProcStoragePort;
 pub use partition::topic_filter_matches;
 pub use port::{StorageCapabilities, StoragePort};
+pub use query::ListEventsQuery;
