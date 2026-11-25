@@ -1,7 +1,7 @@
 //! Shared runtime services for handler delivery (constructed at Photon build time).
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::{DateTime, Utc};
@@ -183,6 +183,7 @@ pub struct HandlerSignal {
     pub run_lock: tokio::sync::Mutex<()>,
     hold: AtomicBool,
     running: AtomicBool,
+    seen_generation: AtomicU64,
 }
 
 impl HandlerSignal {
@@ -204,6 +205,14 @@ impl HandlerSignal {
     /// Mark the handler's loop as started or stopped.
     pub fn set_running(&self, running: bool) {
         self.running.store(running, Ordering::SeqCst);
+    }
+
+    /// Record a stored rewind generation; `true` when it is newer than any seen on this node.
+    ///
+    /// A node that runs a replay or skip records the generation it stored, so its own loop
+    /// does not treat that rewind as one from another node.
+    pub fn see_generation(&self, generation: u64) -> bool {
+        self.seen_generation.fetch_max(generation, Ordering::SeqCst) < generation
     }
 }
 
@@ -298,5 +307,14 @@ mod tests {
         a.set_held(true);
         assert!(signals.get("k").held());
         assert!(!signals.get("other").held());
+    }
+
+    #[test]
+    fn see_generation_reports_only_newer_values() {
+        let signal = HandlerSignal::default();
+        assert!(signal.see_generation(2));
+        assert!(!signal.see_generation(2));
+        assert!(!signal.see_generation(1));
+        assert!(signal.see_generation(3));
     }
 }

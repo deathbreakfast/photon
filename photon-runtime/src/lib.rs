@@ -27,6 +27,6 @@ pub use photon_backend::{
     BackendCapabilities, BackendContext, EmbeddedBackend, Envelope, Event, GenericPhotonBackend,
     GroupOpts, HandlerCtx, HandlerDescriptor, HandlerRegistry, InProcStoragePort, ListEventsQuery,
     PhotonBackend, PhotonError, Result, StoragePort, SubscribeOpts, Subscription,
-    SubscriptionControl, SubscriptionHandle, SubscriptionMode, TopicDescriptor, TopicRegistry,
-    TransportCrypto,
+    SubscriptionControl, SubscriptionHandle, SubscriptionMode, SubscriptionPause, TopicDescriptor,
+    TopicRegistry, TransportCrypto,
 };

@@ -20,7 +20,7 @@ use uuid::Uuid;
 use super::partition::topic_filter_matches;
 use super::port::{StorageCapabilities, StoragePort};
 use super::query::ListEventsQuery;
-use crate::backend::SubscriptionControl;
+use crate::backend::{SubscriptionControl, SubscriptionPause};
 use crate::error::Result;
 use crate::event::{open_stored_event, seal_event_for_storage, TransportCrypto};
 use crate::models::Event;
@@ -98,7 +98,8 @@ pub struct InProcStoragePort {
     seq_counters: Arc<DashMap<String, i64>>,
     checkpoints: Arc<DashMap<String, i64>>,
     delivery_pins: Arc<DashMap<String, i64>>,
-    controls: Arc<DashMap<String, SubscriptionControl>>,
+    pauses: Arc<DashMap<String, SubscriptionPause>>,
+    rewind_generations: Arc<DashMap<String, u64>>,
 }
 
 impl InProcStoragePort {
@@ -115,7 +116,8 @@ impl InProcStoragePort {
             seq_counters: Arc::new(DashMap::new()),
             checkpoints: Arc::new(DashMap::new()),
             delivery_pins: Arc::new(DashMap::new()),
-            controls: Arc::new(DashMap::new()),
+            pauses: Arc::new(DashMap::new()),
+            rewind_generations: Arc::new(DashMap::new()),
         }
     }
 
@@ -364,27 +366,36 @@ impl StoragePort for InProcStoragePort {
         Ok(())
     }
 
-    async fn get_subscription_control(
-        &self,
-        subscription: &str,
-    ) -> Result<Option<SubscriptionControl>> {
-        Ok(self.controls.get(subscription).map(|c| c.clone()))
+    async fn get_subscription_control(&self, subscription: &str) -> Result<SubscriptionControl> {
+        Ok(SubscriptionControl {
+            pause: self.pauses.get(subscription).map(|p| p.clone()),
+            rewind_generation: self.rewind_generations.get(subscription).map_or(0, |g| *g),
+        })
     }
 
-    async fn set_subscription_control(
+    async fn set_subscription_pause(
         &self,
         subscription: &str,
-        control: Option<SubscriptionControl>,
+        pause: Option<SubscriptionPause>,
     ) -> Result<()> {
-        match control {
-            Some(c) => {
-                self.controls.insert(subscription.to_string(), c);
+        match pause {
+            Some(p) => {
+                self.pauses.insert(subscription.to_string(), p);
             }
             None => {
-                self.controls.remove(subscription);
+                self.pauses.remove(subscription);
             }
         }
         Ok(())
+    }
+
+    async fn bump_rewind_generation(&self, subscription: &str) -> Result<u64> {
+        let mut generation = self
+            .rewind_generations
+            .entry(subscription.to_string())
+            .or_insert(0);
+        *generation += 1;
+        Ok(*generation)
     }
 }
 
@@ -421,22 +432,54 @@ mod tests {
     #[tokio::test]
     async fn subscription_control_round_trips_and_clears() {
         let port = InProcStoragePort::new(TransportCrypto::from_bytes([4; 32]));
-        assert_eq!(port.get_subscription_control("s").await.expect("get"), None);
-        let control = SubscriptionControl {
-            paused_by: "Kenji".into(),
-            paused_at: Utc::now(),
+        assert_eq!(
+            port.get_subscription_control("s").await.expect("get"),
+            SubscriptionControl::default()
+        );
+        let pause = SubscriptionPause {
+            by: "Kenji".into(),
+            at: Utc::now(),
         };
-        port.set_subscription_control("s", Some(control.clone()))
+        port.set_subscription_pause("s", Some(pause.clone()))
             .await
             .expect("set");
         assert_eq!(
-            port.get_subscription_control("s").await.expect("get"),
-            Some(control)
+            port.get_subscription_control("s").await.expect("get").pause,
+            Some(pause)
         );
-        port.set_subscription_control("s", None)
+        port.set_subscription_pause("s", None).await.expect("clear");
+        assert_eq!(
+            port.get_subscription_control("s").await.expect("get"),
+            SubscriptionControl::default()
+        );
+    }
+
+    #[tokio::test]
+    async fn rewind_generation_increments_and_survives_pause_changes() {
+        let port = InProcStoragePort::new(TransportCrypto::from_bytes([5; 32]));
+        assert_eq!(port.bump_rewind_generation("s").await.expect("bump"), 1);
+        assert_eq!(port.bump_rewind_generation("s").await.expect("bump"), 2);
+        port.set_subscription_pause(
+            "s",
+            Some(SubscriptionPause {
+                by: "Ines".into(),
+                at: Utc::now(),
+            }),
+        )
+        .await
+        .expect("pause");
+        port.set_subscription_pause("s", None)
             .await
-            .expect("clear");
-        assert_eq!(port.get_subscription_control("s").await.expect("get"), None);
+            .expect("resume");
+        let control = port.get_subscription_control("s").await.expect("get");
+        assert_eq!(control.rewind_generation, 2);
+        assert_eq!(
+            port.get_subscription_control("other")
+                .await
+                .expect("get")
+                .rewind_generation,
+            0
+        );
     }
 
     #[tokio::test]

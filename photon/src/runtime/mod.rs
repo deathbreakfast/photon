@@ -21,6 +21,7 @@ pub use photon_runtime::{
     runtime as runtime_parts, AdminBackendSummary, AdminCheckpointSummary, AdminHandlerHealth,
     AdminHandlerSummary, AdminPaused, AdminRetrying, AdminSnapshot, AdminTopicSummary, DlqRecord,
     Photon, PhotonBuilder, PhotonRuntimeState, ReplayFrom, ReplayPreview, SubscriptionControl,
+    SubscriptionPause,
 };
 
 pub use photon_telemetry::{install_ops_log, ops_log, ConsoleOpsLog, NoOpsLog, OpsLog};

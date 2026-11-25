@@ -18,7 +18,8 @@ use uuid::Uuid;
 use photon_backend::models::Event;
 use photon_backend::{
     open_stored_event, seal_event_for_storage, topic_filter_matches, ListEventsQuery, PhotonError,
-    Result, StorageCapabilities, StoragePort, SubscriptionControl, TransportCrypto,
+    Result, StorageCapabilities, StoragePort, SubscriptionControl, SubscriptionPause,
+    TransportCrypto,
 };
 
 use crate::config::sqlite_path_from_env;
@@ -180,6 +181,16 @@ impl SqliteStoragePort {
                 subscription TEXT PRIMARY KEY,
                 paused_by TEXT NOT NULL,
                 paused_at TEXT NOT NULL
+            )",
+        )
+        .execute(pool)
+        .await
+        .map_err(map_sqlx)?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS subscription_rewinds (
+                subscription TEXT PRIMARY KEY,
+                generation INTEGER NOT NULL
             )",
         )
         .execute(pool)
@@ -601,10 +612,7 @@ impl StoragePort for SqliteStoragePort {
         Ok(())
     }
 
-    async fn get_subscription_control(
-        &self,
-        subscription: &str,
-    ) -> Result<Option<SubscriptionControl>> {
+    async fn get_subscription_control(&self, subscription: &str) -> Result<SubscriptionControl> {
         let row = sqlx::query(
             "SELECT paused_by, paused_at FROM subscription_controls WHERE subscription = ?",
         )
@@ -612,36 +620,45 @@ impl StoragePort for SqliteStoragePort {
         .fetch_optional(&self.pool)
         .await
         .map_err(map_sqlx)?;
-        row.map(|r| {
-            let paused_at: String = r.get(1);
-            let paused_at = chrono::DateTime::parse_from_rfc3339(&paused_at)
-                .map_err(|e| {
-                    PhotonError::persistence("sqlite: subscription_controls.paused_at", e)
-                })?
-                .with_timezone(&Utc);
-            Ok(SubscriptionControl {
-                paused_by: r.get(0),
-                paused_at,
+        let pause = row
+            .map(|r| {
+                let paused_at: String = r.get(1);
+                let at = chrono::DateTime::parse_from_rfc3339(&paused_at)
+                    .map_err(|e| {
+                        PhotonError::persistence("sqlite: subscription_controls.paused_at", e)
+                    })?
+                    .with_timezone(&Utc);
+                Ok::<_, PhotonError>(SubscriptionPause { by: r.get(0), at })
             })
+            .transpose()?;
+        let generation: Option<i64> = sqlx::query_scalar(
+            "SELECT generation FROM subscription_rewinds WHERE subscription = ?",
+        )
+        .bind(subscription)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        Ok(SubscriptionControl {
+            pause,
+            rewind_generation: generation.map_or(0, |g| u64::try_from(g).unwrap_or(0)),
         })
-        .transpose()
     }
 
-    async fn set_subscription_control(
+    async fn set_subscription_pause(
         &self,
         subscription: &str,
-        control: Option<SubscriptionControl>,
+        pause: Option<SubscriptionPause>,
     ) -> Result<()> {
-        match control {
-            Some(c) => sqlx::query(
+        match pause {
+            Some(p) => sqlx::query(
                 "INSERT INTO subscription_controls (subscription, paused_by, paused_at)
                  VALUES (?, ?, ?)
                  ON CONFLICT(subscription) DO UPDATE
                  SET paused_by = excluded.paused_by, paused_at = excluded.paused_at",
             )
             .bind(subscription)
-            .bind(c.paused_by)
-            .bind(c.paused_at.to_rfc3339())
+            .bind(p.by)
+            .bind(p.at.to_rfc3339())
             .execute(&self.pool)
             .await
             .map_err(map_sqlx)?,
@@ -652,6 +669,19 @@ impl StoragePort for SqliteStoragePort {
                 .map_err(map_sqlx)?,
         };
         Ok(())
+    }
+
+    async fn bump_rewind_generation(&self, subscription: &str) -> Result<u64> {
+        let generation: i64 = sqlx::query_scalar(
+            "INSERT INTO subscription_rewinds (subscription, generation) VALUES (?, 1)
+             ON CONFLICT(subscription) DO UPDATE SET generation = generation + 1
+             RETURNING generation",
+        )
+        .bind(subscription)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        Ok(u64::try_from(generation).unwrap_or(0))
     }
 }
 

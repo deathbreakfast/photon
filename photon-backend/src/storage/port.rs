@@ -22,7 +22,7 @@ use futures::stream::Stream;
 use serde_json::Value;
 
 use super::query::ListEventsQuery;
-use crate::backend::SubscriptionControl;
+use crate::backend::{SubscriptionControl, SubscriptionPause};
 use crate::error::{PhotonError, Result};
 use crate::models::Event;
 
@@ -41,7 +41,7 @@ pub struct StorageCapabilities {
     pub max_replay_window: Option<Duration>,
     /// Stable telemetry / bench label (`mem`, `nats`, …).
     pub telemetry_label: &'static str,
-    /// Whether [`StoragePort::get_subscription_control`] / [`StoragePort::set_subscription_control`]
+    /// Whether [`StoragePort::get_subscription_control`] / [`StoragePort::set_subscription_pause`]
     /// and [`StoragePort::reset_checkpoint`] are supported (pause, resume and replay).
     pub supports_subscription_control: bool,
 }
@@ -315,31 +315,40 @@ pub trait StoragePort: Send + Sync {
         Err(PhotonError::Unsupported("reset_checkpoint".into()))
     }
 
-    /// Load the pause state for a subscription (durable name or consumer group id).
+    /// Load the control state for a subscription (durable name or consumer group id).
     ///
     /// # Contract
     ///
-    /// - Returns `None` when the subscription is not paused.
+    /// - Returns [`SubscriptionControl::default`] when nothing is stored.
     /// - Default returns [`PhotonError::Unsupported`].
-    async fn get_subscription_control(
-        &self,
-        subscription: &str,
-    ) -> Result<Option<SubscriptionControl>> {
+    async fn get_subscription_control(&self, subscription: &str) -> Result<SubscriptionControl> {
         let _ = subscription;
         Err(PhotonError::Unsupported("subscription control".into()))
     }
 
-    /// Store (`Some`) or clear (`None`) the pause state for a subscription.
+    /// Store (`Some`) or clear (`None`) the pause for a subscription.
     ///
     /// # Contract
     ///
+    /// - Leaves the rewind generation unchanged.
     /// - Default returns [`PhotonError::Unsupported`].
-    async fn set_subscription_control(
+    async fn set_subscription_pause(
         &self,
         subscription: &str,
-        control: Option<SubscriptionControl>,
+        pause: Option<SubscriptionPause>,
     ) -> Result<()> {
-        let _ = (subscription, control);
+        let _ = (subscription, pause);
+        Err(PhotonError::Unsupported("subscription control".into()))
+    }
+
+    /// Increment a subscription's rewind generation and return the new value.
+    ///
+    /// # Contract
+    ///
+    /// - Atomic: two concurrent bumps return different values.
+    /// - Default returns [`PhotonError::Unsupported`].
+    async fn bump_rewind_generation(&self, subscription: &str) -> Result<u64> {
+        let _ = subscription;
         Err(PhotonError::Unsupported("subscription control".into()))
     }
 }
