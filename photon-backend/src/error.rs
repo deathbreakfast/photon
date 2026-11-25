@@ -103,6 +103,22 @@ pub enum PhotonError {
         source: SharedError,
     },
 
+    /// The installed backend does not support this operation.
+    ///
+    /// Returned by optional [`crate::PhotonBackend`] methods (subscription control, checkpoint
+    /// rewind) on adapters that do not implement them.
+    #[error("unsupported by this backend: {0}")]
+    Unsupported(String),
+
+    /// A replay start point is older than the backend's replay window.
+    #[error("replay point {requested} is outside the {window_secs}s replay window")]
+    ReplayOutOfWindow {
+        /// The requested start point (time or event id) as text.
+        requested: String,
+        /// The backend's `max_replay_window` in seconds.
+        window_secs: u64,
+    },
+
     /// Internal error (opaque message, no source chain).
     #[error("internal error: {0}")]
     Internal(String),

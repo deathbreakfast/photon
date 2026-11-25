@@ -37,6 +37,7 @@ mem = ["photon-backend/mem", "runtime"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+async-trait = { workspace = true }
 
 [package.metadata.docs.rs]
 all-features = true

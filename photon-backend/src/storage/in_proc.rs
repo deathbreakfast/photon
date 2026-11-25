@@ -20,6 +20,7 @@ use uuid::Uuid;
 use super::partition::topic_filter_matches;
 use super::port::{StorageCapabilities, StoragePort};
 use super::query::ListEventsQuery;
+use crate::backend::SubscriptionControl;
 use crate::error::Result;
 use crate::event::{open_stored_event, seal_event_for_storage, TransportCrypto};
 use crate::models::Event;
@@ -97,6 +98,7 @@ pub struct InProcStoragePort {
     seq_counters: Arc<DashMap<String, i64>>,
     checkpoints: Arc<DashMap<String, i64>>,
     delivery_pins: Arc<DashMap<String, i64>>,
+    controls: Arc<DashMap<String, SubscriptionControl>>,
 }
 
 impl InProcStoragePort {
@@ -113,6 +115,7 @@ impl InProcStoragePort {
             seq_counters: Arc::new(DashMap::new()),
             checkpoints: Arc::new(DashMap::new()),
             delivery_pins: Arc::new(DashMap::new()),
+            controls: Arc::new(DashMap::new()),
         }
     }
 
@@ -348,11 +351,93 @@ impl StoragePort for InProcStoragePort {
         let key = partition_key(topic_name, topic_key);
         Ok(self.seq_counters.get(&key).map(|v| *v))
     }
+
+    async fn reset_checkpoint(
+        &self,
+        subscription_name: &str,
+        topic_name: &str,
+        topic_key: Option<&str>,
+        last_seq: i64,
+    ) -> Result<()> {
+        let key = Self::checkpoint_key(subscription_name, topic_name, topic_key);
+        self.checkpoints.insert(key, last_seq);
+        Ok(())
+    }
+
+    async fn get_subscription_control(
+        &self,
+        subscription: &str,
+    ) -> Result<Option<SubscriptionControl>> {
+        Ok(self.controls.get(subscription).map(|c| c.clone()))
+    }
+
+    async fn set_subscription_control(
+        &self,
+        subscription: &str,
+        control: Option<SubscriptionControl>,
+    ) -> Result<()> {
+        match control {
+            Some(c) => {
+                self.controls.insert(subscription.to_string(), c);
+            }
+            None => {
+                self.controls.remove(subscription);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn reset_checkpoint_moves_backward_unlike_commit() {
+        let port = InProcStoragePort::new(TransportCrypto::from_bytes([3; 32]));
+        port.commit_checkpoint("s", "t.reset", None, 10)
+            .await
+            .expect("commit");
+        port.commit_checkpoint("s", "t.reset", None, 4)
+            .await
+            .expect("commit lower");
+        assert_eq!(
+            port.load_checkpoint("s", "t.reset", None)
+                .await
+                .expect("load"),
+            Some(10)
+        );
+        port.reset_checkpoint("s", "t.reset", None, 4)
+            .await
+            .expect("reset");
+        assert_eq!(
+            port.load_checkpoint("s", "t.reset", None)
+                .await
+                .expect("load"),
+            Some(4)
+        );
+    }
+
+    #[tokio::test]
+    async fn subscription_control_round_trips_and_clears() {
+        let port = InProcStoragePort::new(TransportCrypto::from_bytes([4; 32]));
+        assert_eq!(port.get_subscription_control("s").await.expect("get"), None);
+        let control = SubscriptionControl {
+            paused_by: "Kenji".into(),
+            paused_at: Utc::now(),
+        };
+        port.set_subscription_control("s", Some(control.clone()))
+            .await
+            .expect("set");
+        assert_eq!(
+            port.get_subscription_control("s").await.expect("get"),
+            Some(control)
+        );
+        port.set_subscription_control("s", None)
+            .await
+            .expect("clear");
+        assert_eq!(port.get_subscription_control("s").await.expect("get"), None);
+    }
 
     #[tokio::test]
     async fn append_stores_sealed_fields_and_returns_plaintext() {

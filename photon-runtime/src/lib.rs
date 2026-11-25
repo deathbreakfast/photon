@@ -9,20 +9,24 @@ mod builder;
 mod executor;
 mod photon;
 pub mod runtime;
+mod subscription_ops;
 mod subsystem_remote_url;
 
 pub use admin::{
-    collect_admin_snapshot, AdminBackendSummary, AdminCheckpointSummary, AdminHandlerSummary,
-    AdminSnapshot, AdminTopicSummary,
+    collect_admin_snapshot, AdminBackendSummary, AdminCheckpointSummary, AdminHandlerHealth,
+    AdminHandlerSummary, AdminPaused, AdminRetrying, AdminSnapshot, AdminTopicSummary,
 };
 pub use builder::PhotonBuilder;
 pub use executor::ExecutorController;
 pub use photon::{configure, default, Photon, PhotonRuntimeState};
+pub use subscription_ops::{ReplayFrom, ReplayPreview};
 pub use subsystem_remote_url::resolve_photon_remote_base_url;
 
+pub use photon_backend::delivery::DlqRecord;
 pub use photon_backend::{
     BackendCapabilities, BackendContext, EmbeddedBackend, Envelope, Event, GenericPhotonBackend,
     GroupOpts, HandlerCtx, HandlerDescriptor, HandlerRegistry, InProcStoragePort, ListEventsQuery,
     PhotonBackend, PhotonError, Result, StoragePort, SubscribeOpts, Subscription,
-    SubscriptionHandle, SubscriptionMode, TopicDescriptor, TopicRegistry, TransportCrypto,
+    SubscriptionControl, SubscriptionHandle, SubscriptionMode, TopicDescriptor, TopicRegistry,
+    TransportCrypto,
 };

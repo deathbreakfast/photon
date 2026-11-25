@@ -15,10 +15,22 @@ use futures::stream::Stream;
 use serde_json::Value;
 
 use crate::backend::BackendCapabilities;
-use crate::error::Result;
+use crate::error::{PhotonError, Result};
 use crate::models::Event;
 use crate::registry::TopicRegistry;
 use crate::storage::ListEventsQuery;
+
+/// Pause state for one subscription (durable name or consumer group id).
+///
+/// Stored by backends that report `supports_subscription_control`; the executor stops
+/// dispatching for a subscription while one is set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubscriptionControl {
+    /// Display label of whoever paused it (Photon does not resolve identity).
+    pub paused_by: String,
+    /// When it was paused.
+    pub paused_at: DateTime<Utc>,
+}
 
 /// Backend for publish/subscribe delivery and checkpoint persistence.
 ///
@@ -178,5 +190,42 @@ pub trait PhotonBackend: Send + Sync {
     /// Default returns `None` when the adapter does not support it.
     async fn head_seq(&self, _topic_name: &str, _topic_key: Option<&str>) -> Result<Option<i64>> {
         Ok(None)
+    }
+
+    /// Overwrite a checkpoint, moving it backward if needed (replay).
+    ///
+    /// # Contract
+    ///
+    /// - Unlike [`Self::set_checkpoint`], the stored value becomes exactly `last_seq`.
+    /// - Default returns [`PhotonError::Unsupported`].
+    async fn reset_checkpoint(
+        &self,
+        _subscription_name: &str,
+        _topic_name: &str,
+        _topic_key: Option<&str>,
+        _last_seq: i64,
+    ) -> Result<()> {
+        Err(PhotonError::Unsupported("reset_checkpoint".into()))
+    }
+
+    /// Load the pause state for a subscription; `None` when it is running.
+    ///
+    /// Default returns [`PhotonError::Unsupported`]; see `supports_subscription_control`.
+    async fn get_subscription_control(
+        &self,
+        _subscription: &str,
+    ) -> Result<Option<SubscriptionControl>> {
+        Err(PhotonError::Unsupported("subscription control".into()))
+    }
+
+    /// Store (`Some`) or clear (`None`) the pause state for a subscription.
+    ///
+    /// Default returns [`PhotonError::Unsupported`]; see `supports_subscription_control`.
+    async fn set_subscription_control(
+        &self,
+        _subscription: &str,
+        _control: Option<SubscriptionControl>,
+    ) -> Result<()> {
+        Err(PhotonError::Unsupported("subscription control".into()))
     }
 }

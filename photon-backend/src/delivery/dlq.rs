@@ -119,6 +119,37 @@ impl DlqSink {
         self.len() == 0
     }
 
+    /// Newest-first DLQ records, optionally only those for one subscription.
+    ///
+    /// The sink is in memory, so this covers failures on this node since start.
+    pub fn records(&self, subscription: Option<&str>, limit: usize) -> Vec<DlqRecord> {
+        let guard = self
+            .records
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard
+            .iter()
+            .rev()
+            .filter(|r| subscription.is_none_or(|s| r.subscription_name.as_deref() == Some(s)))
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+
+    /// Every DLQ record for one event id, newest first (one per failed subscription delivery).
+    pub fn for_event(&self, event_id: &str) -> Vec<DlqRecord> {
+        let guard = self
+            .records
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard
+            .iter()
+            .rev()
+            .filter(|r| r.event_id == event_id)
+            .cloned()
+            .collect()
+    }
+
     /// Minimum seq among DLQ records for a transport partition (retention pin).
     pub fn min_seq_for(&self, topic: &str, topic_key: Option<&str>) -> Option<i64> {
         self.records.lock().ok().and_then(|guard| {
@@ -155,6 +186,42 @@ mod tests {
         sink.record(&params(7, None)).expect("record");
         assert_eq!(sink.len(), 1);
         assert!(!sink.is_empty());
+    }
+
+    #[test]
+    fn records_are_newest_first_and_filter_by_subscription() {
+        let sink = DlqSink::new();
+        sink.record(&params(1, None)).expect("record");
+        sink.record(&DlqRecordParams {
+            event_id: "evt-2",
+            subscription_name: Some("worker-b"),
+            ..params(2, None)
+        })
+        .expect("record");
+        sink.record(&params(3, None)).expect("record");
+
+        let all = sink.records(None, 10);
+        assert_eq!(all.iter().map(|r| r.seq).collect::<Vec<_>>(), vec![3, 2, 1]);
+        let a = sink.records(Some("worker-a"), 1);
+        assert_eq!(a.len(), 1);
+        assert_eq!(a[0].seq, 3);
+        assert!(sink.records(Some("nobody"), 10).is_empty());
+    }
+
+    #[test]
+    fn for_event_returns_only_that_event() {
+        let sink = DlqSink::new();
+        sink.record(&params(1, None)).expect("record");
+        sink.record(&DlqRecordParams {
+            event_id: "evt-2",
+            ..params(2, None)
+        })
+        .expect("record");
+        sink.record(&params(3, None)).expect("record");
+
+        let got = sink.for_event("evt-1");
+        assert_eq!(got.iter().map(|r| r.seq).collect::<Vec<_>>(), vec![3, 1]);
+        assert!(sink.for_event("missing").is_empty());
     }
 
     #[test]

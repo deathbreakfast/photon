@@ -22,11 +22,13 @@ use futures::stream::Stream;
 use serde_json::Value;
 
 use super::query::ListEventsQuery;
-use crate::error::Result;
+use crate::backend::SubscriptionControl;
+use crate::error::{PhotonError, Result};
 use crate::models::Event;
 
 /// Capabilities advertised by a storage port (surfaced via [`crate::backend::GenericPhotonBackend`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // independent feature flags, not a state machine
 pub struct StorageCapabilities {
     /// Whether [`StoragePort::get_event`] is supported.
     pub supports_get_event: bool,
@@ -39,6 +41,9 @@ pub struct StorageCapabilities {
     pub max_replay_window: Option<Duration>,
     /// Stable telemetry / bench label (`mem`, `nats`, …).
     pub telemetry_label: &'static str,
+    /// Whether [`StoragePort::get_subscription_control`] / [`StoragePort::set_subscription_control`]
+    /// and [`StoragePort::reset_checkpoint`] are supported (pause, resume and replay).
+    pub supports_subscription_control: bool,
 }
 
 impl StorageCapabilities {
@@ -51,6 +56,7 @@ impl StorageCapabilities {
             supports_count_events: true,
             max_replay_window: None,
             telemetry_label: "mem",
+            supports_subscription_control: true,
         }
     }
 
@@ -63,6 +69,7 @@ impl StorageCapabilities {
             supports_count_events: true,
             max_replay_window: None,
             telemetry_label: "sqlite",
+            supports_subscription_control: true,
         }
     }
 
@@ -75,6 +82,7 @@ impl StorageCapabilities {
             supports_count_events: false,
             max_replay_window: Some(Duration::from_mins(15)),
             telemetry_label: label,
+            supports_subscription_control: false,
         }
     }
 }
@@ -288,5 +296,50 @@ pub trait StoragePort: Send + Sync {
     async fn head_seq(&self, topic_name: &str, topic_key: Option<&str>) -> Result<Option<i64>> {
         let _ = (topic_name, topic_key);
         Ok(None)
+    }
+
+    /// Overwrite a subscription partition's checkpoint, moving it backward if needed (replay).
+    ///
+    /// # Contract
+    ///
+    /// - Unlike [`Self::commit_checkpoint`], the stored value becomes exactly `last_seq`.
+    /// - Default returns [`PhotonError::Unsupported`].
+    async fn reset_checkpoint(
+        &self,
+        subscription_name: &str,
+        topic_name: &str,
+        topic_key: Option<&str>,
+        last_seq: i64,
+    ) -> Result<()> {
+        let _ = (subscription_name, topic_name, topic_key, last_seq);
+        Err(PhotonError::Unsupported("reset_checkpoint".into()))
+    }
+
+    /// Load the pause state for a subscription (durable name or consumer group id).
+    ///
+    /// # Contract
+    ///
+    /// - Returns `None` when the subscription is not paused.
+    /// - Default returns [`PhotonError::Unsupported`].
+    async fn get_subscription_control(
+        &self,
+        subscription: &str,
+    ) -> Result<Option<SubscriptionControl>> {
+        let _ = subscription;
+        Err(PhotonError::Unsupported("subscription control".into()))
+    }
+
+    /// Store (`Some`) or clear (`None`) the pause state for a subscription.
+    ///
+    /// # Contract
+    ///
+    /// - Default returns [`PhotonError::Unsupported`].
+    async fn set_subscription_control(
+        &self,
+        subscription: &str,
+        control: Option<SubscriptionControl>,
+    ) -> Result<()> {
+        let _ = (subscription, control);
+        Err(PhotonError::Unsupported("subscription control".into()))
     }
 }
