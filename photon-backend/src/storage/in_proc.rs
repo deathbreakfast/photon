@@ -451,12 +451,13 @@ mod tests {
         }
     }
 
-    /// A timestamp strictly between the events appended before and after it.
-    async fn time_mark() -> chrono::DateTime<Utc> {
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-        let mark = Utc::now();
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-        mark
+    /// Pin every stored event of `topic` to `base + seq` seconds, so ranges need no clock gaps.
+    fn stamp(port: &InProcStoragePort, topic: &str, base: chrono::DateTime<Utc>) {
+        for mut entry in port.events.iter_mut() {
+            if entry.topic_name == topic {
+                entry.created_at = base + chrono::Duration::seconds(entry.seq);
+            }
+        }
     }
 
     #[tokio::test]
@@ -482,7 +483,11 @@ mod tests {
         );
         assert_eq!(count(None, None, Some(day_ago)).await.unwrap(), Some(417));
 
-        let later = time_mark().await;
+        let hour_ago = Utc::now() - chrono::Duration::hours(1);
+        for topic in ["test.count", "test.count.keyed"] {
+            stamp(&port, topic, hour_ago);
+        }
+        let later = hour_ago + chrono::Duration::minutes(30);
         assert_eq!(count(None, None, Some(later)).await.unwrap(), Some(0));
         append_n(&port, "test.count", None, 1).await;
         assert_eq!(
@@ -495,11 +500,11 @@ mod tests {
     async fn list_events_returns_a_time_range_newest_first() {
         let port = InProcStoragePort::new(TransportCrypto::from_bytes([4; 32]));
         let topic = "test.range";
-        append_n(&port, topic, None, 3).await;
-        let start = time_mark().await;
-        append_n(&port, topic, None, 4).await;
-        let end = time_mark().await;
-        append_n(&port, topic, None, 2).await;
+        append_n(&port, topic, None, 9).await;
+        let base = Utc::now() - chrono::Duration::hours(1);
+        stamp(&port, topic, base);
+        let start = base + chrono::Duration::seconds(4);
+        let end = base + chrono::Duration::seconds(8);
 
         let query = ListEventsQuery {
             topic: Some(topic.into()),
