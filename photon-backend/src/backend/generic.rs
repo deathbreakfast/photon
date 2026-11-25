@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use super::capabilities::BackendCapabilities;
 use super::context::BackendContext;
-use super::photon_backend::PhotonBackend;
+use super::photon_backend::{PhotonBackend, SubscriptionControl};
 use crate::error::Result;
 use crate::input::{validate_payload_size, validate_topic_name};
 use crate::models::Event;
@@ -176,5 +176,34 @@ impl PhotonBackend for GenericPhotonBackend {
 
     async fn head_seq(&self, topic_name: &str, topic_key: Option<&str>) -> Result<Option<i64>> {
         self.port.head_seq(topic_name, topic_key).await
+    }
+
+    async fn reset_checkpoint(
+        &self,
+        subscription_name: &str,
+        topic_name: &str,
+        topic_key: Option<&str>,
+        last_seq: i64,
+    ) -> Result<()> {
+        self.port
+            .reset_checkpoint(subscription_name, topic_name, topic_key, last_seq)
+            .await
+    }
+
+    async fn get_subscription_control(
+        &self,
+        subscription: &str,
+    ) -> Result<Option<SubscriptionControl>> {
+        self.port.get_subscription_control(subscription).await
+    }
+
+    async fn set_subscription_control(
+        &self,
+        subscription: &str,
+        control: Option<SubscriptionControl>,
+    ) -> Result<()> {
+        self.port
+            .set_subscription_control(subscription, control)
+            .await
     }
 }

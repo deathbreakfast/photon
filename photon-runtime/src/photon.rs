@@ -128,6 +128,10 @@ impl Photon {
         self.backend.telemetry_label()
     }
 
+    pub(crate) const fn backend(&self) -> &Arc<dyn PhotonBackend> {
+        &self.backend
+    }
+
     pub(crate) fn backend_capabilities(&self) -> BackendCapabilities {
         PhotonBackend::capabilities(self.backend.as_ref())
     }

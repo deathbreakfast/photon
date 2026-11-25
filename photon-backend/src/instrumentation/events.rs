@@ -119,6 +119,48 @@ pub fn log_ops(
     );
 }
 
+/// Build JSON fields for a `photon_subscription_op` ops-log event.
+///
+/// `by` is the display label the caller passed; Photon does not resolve or check it.
+#[must_use]
+pub fn subscription_op_fields(
+    operation: &str,
+    registry_key: &str,
+    subscription: &str,
+    by: &str,
+    detail: &Value,
+) -> Value {
+    json!({
+        "operation": operation,
+        "registry_key": registry_key,
+        "subscription": subscription,
+        "by": by,
+        "detail": detail,
+    })
+}
+
+/// Emit a `photon_subscription_op` event for pause, resume, replay, skip, retry or redeliver.
+pub fn log_subscription_op(
+    operation: &str,
+    registry_key: &str,
+    subscription: &str,
+    by: &str,
+    detail: &Value,
+) {
+    tracing::info!(
+        operation,
+        registry_key,
+        subscription,
+        by,
+        detail = %detail,
+        "photon subscription operation"
+    );
+    ops_log().log_event(
+        "photon_subscription_op",
+        &subscription_op_fields(operation, registry_key, subscription, by, detail),
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,6 +182,15 @@ mod tests {
         assert!(!err.contains("hunter2"));
         assert!(fields.get("actor_json").is_none());
         assert!(fields.get("payload_json").is_none());
+    }
+
+    #[test]
+    fn subscription_op_fields_carry_operation_and_actor_label() {
+        let fields = subscription_op_fields("pause", "k", "sub", "Kenji", &json!({}));
+        assert_eq!(fields["operation"], "pause");
+        assert_eq!(fields["registry_key"], "k");
+        assert_eq!(fields["subscription"], "sub");
+        assert_eq!(fields["by"], "Kenji");
     }
 
     #[test]

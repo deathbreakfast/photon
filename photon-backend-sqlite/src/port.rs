@@ -18,7 +18,7 @@ use uuid::Uuid;
 use photon_backend::models::Event;
 use photon_backend::{
     open_stored_event, seal_event_for_storage, topic_filter_matches, PhotonError, Result,
-    StorageCapabilities, StoragePort, TransportCrypto,
+    StorageCapabilities, StoragePort, SubscriptionControl, TransportCrypto,
 };
 
 use crate::config::sqlite_path_from_env;
@@ -156,6 +156,17 @@ impl SqliteStoragePort {
             "CREATE TABLE IF NOT EXISTS checkpoints (
                 checkpoint_key TEXT PRIMARY KEY,
                 last_seq INTEGER NOT NULL
+            )",
+        )
+        .execute(pool)
+        .await
+        .map_err(map_sqlx)?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS subscription_controls (
+                subscription TEXT PRIMARY KEY,
+                paused_by TEXT NOT NULL,
+                paused_at TEXT NOT NULL
             )",
         )
         .execute(pool)
@@ -530,6 +541,79 @@ impl StoragePort for SqliteStoragePort {
             .await
             .map_err(map_sqlx)?;
         Ok(row.map(|r| r.get::<i64, _>(0)))
+    }
+
+    async fn reset_checkpoint(
+        &self,
+        subscription_name: &str,
+        topic_name: &str,
+        topic_key: Option<&str>,
+        last_seq: i64,
+    ) -> Result<()> {
+        let key = checkpoint_key(subscription_name, topic_name, topic_key);
+        sqlx::query(
+            "INSERT INTO checkpoints (checkpoint_key, last_seq) VALUES (?, ?)
+             ON CONFLICT(checkpoint_key) DO UPDATE SET last_seq = excluded.last_seq",
+        )
+        .bind(&key)
+        .bind(last_seq)
+        .execute(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        Ok(())
+    }
+
+    async fn get_subscription_control(
+        &self,
+        subscription: &str,
+    ) -> Result<Option<SubscriptionControl>> {
+        let row = sqlx::query(
+            "SELECT paused_by, paused_at FROM subscription_controls WHERE subscription = ?",
+        )
+        .bind(subscription)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        row.map(|r| {
+            let paused_at: String = r.get(1);
+            let paused_at = chrono::DateTime::parse_from_rfc3339(&paused_at)
+                .map_err(|e| {
+                    PhotonError::persistence("sqlite: subscription_controls.paused_at", e)
+                })?
+                .with_timezone(&Utc);
+            Ok(SubscriptionControl {
+                paused_by: r.get(0),
+                paused_at,
+            })
+        })
+        .transpose()
+    }
+
+    async fn set_subscription_control(
+        &self,
+        subscription: &str,
+        control: Option<SubscriptionControl>,
+    ) -> Result<()> {
+        match control {
+            Some(c) => sqlx::query(
+                "INSERT INTO subscription_controls (subscription, paused_by, paused_at)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT(subscription) DO UPDATE
+                 SET paused_by = excluded.paused_by, paused_at = excluded.paused_at",
+            )
+            .bind(subscription)
+            .bind(c.paused_by)
+            .bind(c.paused_at.to_rfc3339())
+            .execute(&self.pool)
+            .await
+            .map_err(map_sqlx)?,
+            None => sqlx::query("DELETE FROM subscription_controls WHERE subscription = ?")
+                .bind(subscription)
+                .execute(&self.pool)
+                .await
+                .map_err(map_sqlx)?,
+        };
+        Ok(())
     }
 }
 

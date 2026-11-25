@@ -16,6 +16,7 @@ photon-core = { workspace = true }
 photon-backend = { workspace = true }
 photon-telemetry = { workspace = true }
 futures = { version = "0.3", optional = true }
+chrono = { version = "0.4", features = ["serde"], optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, optional = true }
@@ -26,6 +27,7 @@ tokio-util = { version = "0.7", features = ["rt"], optional = true }
 default = []
 runtime = [
     "photon-backend/runtime",
+    "dep:chrono",
     "dep:futures",
     "dep:tokio",
     "dep:tracing",
@@ -35,6 +37,7 @@ mem = ["photon-backend/mem", "runtime"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+async-trait = { workspace = true }
 
 [package.metadata.docs.rs]
 all-features = true

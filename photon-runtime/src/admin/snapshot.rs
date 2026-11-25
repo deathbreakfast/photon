@@ -3,16 +3,18 @@
 //! Snapshots are metadata-only (topics, handlers, checkpoints). They never include
 //! event `actor_json` / `payload_json` or raw DLQ error bodies.
 
+use chrono::{DateTime, Utc};
 use photon_backend::{
-    redact_credentials_in_text, sanitize_error_message, shard_storage_key, BackendCapabilities,
-    HandlerDescriptor, HandlerRegistry, PhotonError, ShardConfig, TopicDescriptor,
+    redact_credentials_in_text, sanitize_error_message, BackendCapabilities, HandlerDescriptor,
+    HandlerHealth, HandlerRegistry, PhotonError, TopicDescriptor,
 };
 
+use crate::executor::subscription_of;
 use crate::Photon;
 
 use super::types::{
-    AdminBackendSummary, AdminCheckpointSummary, AdminHandlerSummary, AdminSnapshot,
-    AdminTopicSummary,
+    AdminBackendSummary, AdminCheckpointSummary, AdminHandlerHealth, AdminHandlerSummary,
+    AdminPaused, AdminRetrying, AdminSnapshot, AdminTopicSummary,
 };
 
 /// Build a full admin snapshot for the given runtime (async checkpoint reads).
@@ -22,7 +24,9 @@ use super::types::{
 /// Returns an error if a checkpoint load fails. Error text is sanitized before return.
 pub async fn collect_admin_snapshot(photon: &Photon) -> photon_backend::Result<AdminSnapshot> {
     let topics = collect_topics(photon);
-    let handlers = collect_handlers();
+    let handlers = collect_handlers(photon)
+        .await
+        .map_err(|e| sanitize_admin_error(&e))?;
     let backend = collect_backend(photon.backend_capabilities());
     let checkpoints = collect_checkpoints(photon)
         .await
@@ -61,12 +65,50 @@ fn topic_from_descriptor(descriptor: &TopicDescriptor) -> AdminTopicSummary {
     }
 }
 
-fn collect_handlers() -> Vec<AdminHandlerSummary> {
+async fn collect_handlers(photon: &Photon) -> photon_backend::Result<Vec<AdminHandlerSummary>> {
     let registry = HandlerRegistry::auto_discover();
-    registry.iter().map(handler_from_descriptor).collect()
+    let stats = &photon.runtime().executor_services.stats;
+    let now = Utc::now();
+    let mut out = Vec::new();
+    for handler in registry.iter() {
+        let paused = match photon
+            .backend()
+            .get_subscription_control(subscription_of(handler))
+            .await
+        {
+            Ok(control) => control.map(|c| AdminPaused {
+                by: c.paused_by,
+                at: c.paused_at,
+            }),
+            Err(PhotonError::Unsupported(_)) => None,
+            Err(e) => return Err(e),
+        };
+        let health = health_from_stats(stats.snapshot(handler.registry_key, now), paused);
+        out.push(handler_from_descriptor(handler, health));
+    }
+    Ok(out)
 }
 
-fn handler_from_descriptor(handler: &HandlerDescriptor) -> AdminHandlerSummary {
+fn health_from_stats(health: HandlerHealth, paused: Option<AdminPaused>) -> AdminHandlerHealth {
+    AdminHandlerHealth {
+        last_handled_at: health.last_handled_at,
+        last_handled_seq: health.last_handled_seq,
+        failures_24h: health.failures_24h,
+        last_error: health.last_error,
+        last_error_at: health.last_error_at,
+        retrying: health.retrying.map(|r| AdminRetrying {
+            event_id: r.event_id,
+            attempt: r.attempt,
+            next_retry_at: r.next_retry_at,
+        }),
+        paused,
+    }
+}
+
+fn handler_from_descriptor(
+    handler: &HandlerDescriptor,
+    health: AdminHandlerHealth,
+) -> AdminHandlerSummary {
     let is_group = handler.is_consumer_group();
     AdminHandlerSummary {
         topic_name: handler.topic_name.to_string(),
@@ -82,6 +124,7 @@ fn handler_from_descriptor(handler: &HandlerDescriptor) -> AdminHandlerSummary {
         } else {
             "durable".to_string()
         },
+        health,
     }
 }
 
@@ -91,6 +134,7 @@ fn collect_backend(caps: BackendCapabilities) -> AdminBackendSummary {
         supports_get_event: caps.supports_get_event,
         supports_list_events: caps.supports_list_events,
         max_replay_window_secs: caps.max_replay_window.map(|d| d.as_secs()),
+        supports_subscription_control: caps.supports_subscription_control,
     }
 }
 
@@ -98,39 +142,29 @@ async fn collect_checkpoints(
     photon: &Photon,
 ) -> photon_backend::Result<Vec<AdminCheckpointSummary>> {
     let registry = HandlerRegistry::auto_discover();
+    let lists = photon.backend_capabilities().supports_list_events;
     let mut out = Vec::new();
 
     for handler in registry.iter() {
-        if handler.is_consumer_group() {
-            let group_id = handler.consumer_group.unwrap_or("");
-            let shard_count = group_shard_count(photon, handler);
-            for shard_id in 0..shard_count {
-                let shard_key = shard_storage_key(shard_id);
-                let last_seq = photon
-                    .get_checkpoint_seq(group_id, handler.topic_name, Some(&shard_key))
-                    .await?;
-                let head_seq = photon
-                    .head_seq(handler.topic_name, Some(&shard_key))
-                    .await?;
-                out.push(AdminCheckpointSummary {
-                    subscription_name: group_id.to_string(),
-                    topic_name: handler.topic_name.to_string(),
-                    topic_key: Some(shard_key),
-                    last_seq,
-                    head_seq,
-                });
-            }
-        } else {
+        let subscription = subscription_of(handler);
+        for topic_key in photon.partitions(handler) {
+            let key = topic_key.as_deref();
             let last_seq = photon
-                .get_checkpoint_seq(handler.subscription_name, handler.topic_name, None)
+                .get_checkpoint_seq(subscription, handler.topic_name, key)
                 .await?;
-            let head_seq = photon.head_seq(handler.topic_name, None).await?;
+            let head_seq = photon.head_seq(handler.topic_name, key).await?;
+            let oldest_waiting_at = if lists {
+                oldest_waiting(photon, handler.topic_name, key, last_seq).await?
+            } else {
+                None
+            };
             out.push(AdminCheckpointSummary {
-                subscription_name: handler.subscription_name.to_string(),
+                subscription_name: subscription.to_string(),
                 topic_name: handler.topic_name.to_string(),
-                topic_key: None,
+                topic_key,
                 last_seq,
                 head_seq,
+                oldest_waiting_at,
             });
         }
     }
@@ -138,17 +172,17 @@ async fn collect_checkpoints(
     Ok(out)
 }
 
-fn group_shard_count(photon: &Photon, handler: &'static HandlerDescriptor) -> u32 {
-    handler
-        .group_shard_count
-        .or_else(|| {
-            photon
-                .registry()
-                .get(handler.topic_name)
-                .and_then(|d| d.shard_config)
-                .map(|c| c.shard_count)
-        })
-        .unwrap_or(ShardConfig::DEFAULT_SHARD_COUNT)
+/// Creation time of the first event after `last_seq` in a partition.
+async fn oldest_waiting(
+    photon: &Photon,
+    topic: &str,
+    topic_key: Option<&str>,
+    last_seq: Option<i64>,
+) -> photon_backend::Result<Option<DateTime<Utc>>> {
+    let next = photon
+        .list_events_by_topic(topic, topic_key, Some(last_seq.unwrap_or(0)), 1)
+        .await?;
+    Ok(next.first().map(|e| e.created_at))
 }
 
 #[cfg(test)]

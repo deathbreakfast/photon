@@ -8,7 +8,7 @@ mod photon_backend;
 pub use capabilities::BackendCapabilities;
 pub use context::BackendContext;
 pub use generic::GenericPhotonBackend;
-pub use photon_backend::PhotonBackend;
+pub use photon_backend::{PhotonBackend, SubscriptionControl};
 
 /// Back-compat alias for the default in-process `mem` tier [`GenericPhotonBackend`].
 ///

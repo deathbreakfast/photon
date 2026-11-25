@@ -45,6 +45,7 @@ pub mod storage;
 
 pub use backend::{
     BackendCapabilities, BackendContext, EmbeddedBackend, GenericPhotonBackend, PhotonBackend,
+    SubscriptionControl,
 };
 pub use broker_security::{BrokerTransportSecurity, ALLOW_INSECURE_BROKER_ENV};
 pub use consumer_group::{
@@ -55,7 +56,9 @@ pub use delivery_mode::{DeliveryMode, ShardConfig};
 pub use descriptor::TopicDescriptor;
 pub use error::{PhotonError, Result, SharedError};
 pub use event::{open_stored_event, seal_event_for_storage, TransportCrypto, ENVELOPE_JSON_KEY};
-pub use executor_services::ExecutorServices;
+pub use executor_services::{
+    ExecutorServices, HandlerHealth, HandlerStats, RetryState, SubscriptionSignals,
+};
 pub use group_subscribe::{merge_shard_streams, AbortOnDrop};
 pub use handler_ctx::HandlerCtx;
 pub use handler_descriptor::HandlerDescriptor;

@@ -1,5 +1,6 @@
 //! Serde DTOs for host ops introspection (JSON mapping in product packages).
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -27,6 +28,51 @@ pub struct AdminHandlerSummary {
     pub registry_key: String,
     /// Delivery mode: `"durable"` or `"consumer_group"`.
     pub mode: String,
+    /// Delivery health and pause state.
+    pub health: AdminHandlerHealth,
+}
+
+/// How a handler is doing.
+///
+/// Delivery figures are counted in memory by the node that built the snapshot, since it
+/// started; other nodes running the same handler report their own. `paused` is read from the
+/// backend and is shared by every node on the same store.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AdminHandlerHealth {
+    /// When this node last handled an event successfully.
+    pub last_handled_at: Option<DateTime<Utc>>,
+    /// Sequence of that event.
+    pub last_handled_seq: Option<i64>,
+    /// Deliveries on this node that ended in the dead-letter queue over the last 24 hours.
+    pub failures_24h: u32,
+    /// Sanitized, truncated text of the last failure.
+    pub last_error: Option<String>,
+    /// When the last failure happened.
+    pub last_error_at: Option<DateTime<Utc>>,
+    /// The event waiting on a retry backoff, if any.
+    pub retrying: Option<AdminRetrying>,
+    /// Set while the subscription is paused (`None` too when the backend has no control).
+    pub paused: Option<AdminPaused>,
+}
+
+/// An event waiting for its next delivery attempt.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AdminRetrying {
+    /// Event being retried.
+    pub event_id: String,
+    /// Number of the next attempt (the first delivery is attempt 1).
+    pub attempt: u32,
+    /// When the next attempt runs unless retried sooner.
+    pub next_retry_at: DateTime<Utc>,
+}
+
+/// Who paused a subscription, and when.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AdminPaused {
+    /// Display label passed to [`Photon::pause`](crate::Photon::pause).
+    pub by: String,
+    /// When it was paused.
+    pub at: DateTime<Utc>,
 }
 
 /// Last committed sequence for a subscription/topic partition.
@@ -42,6 +88,9 @@ pub struct AdminCheckpointSummary {
     pub last_seq: Option<i64>,
     /// Highest sequence assigned in this partition, if known.
     pub head_seq: Option<i64>,
+    /// Creation time of the first event after `last_seq`, when one is waiting and the backend
+    /// lists events.
+    pub oldest_waiting_at: Option<DateTime<Utc>>,
 }
 
 /// Storage adapter capabilities surfaced for admin UIs.
@@ -55,6 +104,8 @@ pub struct AdminBackendSummary {
     pub supports_list_events: bool,
     /// Maximum replay window in seconds for bounded retention adapters.
     pub max_replay_window_secs: Option<u64>,
+    /// Whether pause/resume and replay are supported ([`Photon::pause`](crate::Photon::pause)).
+    pub supports_subscription_control: bool,
 }
 
 /// Point-in-time ops introspection snapshot (read-only).

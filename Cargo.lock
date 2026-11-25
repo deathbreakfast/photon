@@ -2535,6 +2535,8 @@ dependencies = [
 name = "photon-runtime"
 version = "0.1.4"
 dependencies = [
+ "async-trait",
+ "chrono",
  "futures",
  "photon-backend",
  "photon-telemetry",

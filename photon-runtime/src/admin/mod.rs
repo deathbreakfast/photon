@@ -9,6 +9,6 @@ mod types;
 
 pub use snapshot::collect_admin_snapshot;
 pub use types::{
-    AdminBackendSummary, AdminCheckpointSummary, AdminHandlerSummary, AdminSnapshot,
-    AdminTopicSummary,
+    AdminBackendSummary, AdminCheckpointSummary, AdminHandlerHealth, AdminHandlerSummary,
+    AdminPaused, AdminRetrying, AdminSnapshot, AdminTopicSummary,
 };

@@ -18,8 +18,9 @@ pub use photon_backend::{
 
 pub use photon_runtime::{
     collect_admin_snapshot, configure, default, resolve_photon_remote_base_url,
-    runtime as runtime_parts, AdminBackendSummary, AdminCheckpointSummary, AdminHandlerSummary,
-    AdminSnapshot, AdminTopicSummary, Photon, PhotonBuilder, PhotonRuntimeState,
+    runtime as runtime_parts, AdminBackendSummary, AdminCheckpointSummary, AdminHandlerHealth,
+    AdminHandlerSummary, AdminPaused, AdminRetrying, AdminSnapshot, AdminTopicSummary, DlqRecord,
+    Photon, PhotonBuilder, PhotonRuntimeState, ReplayFrom, ReplayPreview, SubscriptionControl,
 };
 
 pub use photon_telemetry::{install_ops_log, ops_log, ConsoleOpsLog, NoOpsLog, OpsLog};
