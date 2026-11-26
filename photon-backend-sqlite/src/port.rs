@@ -640,7 +640,7 @@ impl StoragePort for SqliteStoragePort {
         .map_err(map_sqlx)?;
         Ok(SubscriptionControl {
             pause,
-            rewind_generation: generation.map_or(0, |g| u64::try_from(g).unwrap_or(0)),
+            rewind_generation: generation.map_or(Ok(0), stored_generation)?,
         })
     }
 
@@ -681,8 +681,14 @@ impl StoragePort for SqliteStoragePort {
         .fetch_one(&self.pool)
         .await
         .map_err(map_sqlx)?;
-        Ok(u64::try_from(generation).unwrap_or(0))
+        stored_generation(generation)
     }
+}
+
+/// A stored rewind generation; negative means the row is corrupt.
+fn stored_generation(generation: i64) -> Result<u64> {
+    u64::try_from(generation)
+        .map_err(|e| PhotonError::persistence("sqlite: subscription_rewinds.generation", e))
 }
 
 #[cfg(test)]
