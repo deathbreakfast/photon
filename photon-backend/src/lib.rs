@@ -45,7 +45,7 @@ pub mod storage;
 
 pub use backend::{
     BackendCapabilities, BackendContext, EmbeddedBackend, GenericPhotonBackend, PhotonBackend,
-    SubscriptionControl,
+    SubscriptionControl, SubscriptionPause,
 };
 pub use broker_security::{BrokerTransportSecurity, ALLOW_INSECURE_BROKER_ENV};
 pub use consumer_group::{

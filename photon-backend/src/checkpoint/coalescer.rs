@@ -116,6 +116,17 @@ impl CheckpointCoalescer {
         flush_map(&self.port, &self.pending, reclaimer).await
     }
 
+    /// Drop one subscription's unflushed checkpoints without committing them.
+    ///
+    /// Used when another node rewound the subscription: committing them (MAX) would raise the
+    /// rewound checkpoint again.
+    pub async fn discard(&self, subscription_name: &str) {
+        self.pending
+            .lock()
+            .await
+            .retain(|k, _| k.subscription_name != subscription_name);
+    }
+
     /// Minimum unflushed seq for a storage partition.
     pub async fn pending_min_seq(&self, topic: &str, topic_key: Option<&str>) -> Option<i64> {
         let guard = self.pending.lock().await;
@@ -226,5 +237,19 @@ mod tests {
             coalescer.pending_min_seq("orders.created", None).await,
             Some(10)
         );
+    }
+
+    #[tokio::test]
+    async fn discard_drops_only_that_subscription() {
+        let port = Arc::new(crate::storage::InProcStoragePort::new(
+            crate::event::TransportCrypto::from_bytes(*b"photon-dev-transport-key-32bytes"),
+        ));
+        let coalescer = CheckpointCoalescer::new(port);
+        coalescer.record("sub-a", "t", None, 10).await.unwrap();
+        coalescer.record("sub-b", "t", None, 4).await.unwrap();
+
+        coalescer.discard("sub-a").await;
+
+        assert_eq!(coalescer.pending_min_seq("t", None).await, Some(4));
     }
 }

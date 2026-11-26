@@ -193,6 +193,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: photon-backend integration tests
         run: cargo test -p photon-backend --features runtime --tests
+      - name: photon-runtime surface tests
+        run: cargo test -p photon-runtime --features mem --test runtime_surface
 
   coverage:
     runs-on: ubuntu-latest

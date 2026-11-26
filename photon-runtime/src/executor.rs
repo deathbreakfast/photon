@@ -331,49 +331,74 @@ enum PassEnd {
     Reconnect,
     /// Paused, or an operation woke the loop; drain, then recheck before resubscribing.
     Control,
+    /// Another node rewound the checkpoint; drop pending commits, then resubscribe.
+    Rewound,
 }
 
-/// How often a loop re-reads its subscription's pause state from the backend.
+/// How often a loop re-reads its subscription's control state from the backend.
 const CONTROL_REFRESH: Duration = Duration::from_secs(5);
 
-/// Cached pause state for one subscription, refreshed at most every [`CONTROL_REFRESH`].
+/// What a loop should do after reading its subscription's control state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ControlState {
+    Run,
+    Paused,
+    /// The stored rewind generation moved past the one this node last saw.
+    Rewound,
+}
+
+/// Cached control state for one subscription, refreshed at most every [`CONTROL_REFRESH`].
 ///
-/// Reading through the backend (not a local flag) lets a pause set on another node sharing the
-/// store reach this loop.
+/// Reading through the backend (not a local flag) lets a pause, replay or skip run on another
+/// node sharing the store reach this loop.
 struct ControlCache {
     /// `None` when the backend has no subscription control (never paused).
     backend: Option<Arc<dyn PhotonBackend>>,
     subscription: String,
+    signal: Arc<HandlerSignal>,
     paused: bool,
     checked_at: Option<tokio::time::Instant>,
 }
 
 impl ControlCache {
-    fn new(backend: Option<Arc<dyn PhotonBackend>>, subscription: &str) -> Self {
+    fn new(
+        backend: Option<Arc<dyn PhotonBackend>>,
+        subscription: &str,
+        signal: Arc<HandlerSignal>,
+    ) -> Self {
         let backend = backend.filter(|b| b.capabilities().supports_subscription_control);
         Self {
             backend,
             subscription: subscription.to_string(),
+            signal,
             paused: false,
             checked_at: None,
         }
     }
 
-    /// Whether the subscription is paused; `refresh` forces a backend read.
-    async fn paused(&mut self, refresh: bool) -> bool {
+    /// The subscription's control state; `refresh` forces a backend read.
+    ///
+    /// A cached answer is never [`ControlState::Rewound`]: a rewind is reported once, by the
+    /// read that first sees its generation.
+    async fn check(&mut self, refresh: bool) -> ControlState {
         let Some(backend) = &self.backend else {
-            return false;
+            return ControlState::Run;
         };
         if !refresh
             && self
                 .checked_at
                 .is_some_and(|at| at.elapsed() < CONTROL_REFRESH)
         {
-            return self.paused;
+            return self.cached();
         }
         self.checked_at = Some(tokio::time::Instant::now());
         match backend.get_subscription_control(&self.subscription).await {
-            Ok(control) => self.paused = control.is_some(),
+            Ok(control) => {
+                self.paused = control.pause.is_some();
+                if self.signal.see_generation(control.rewind_generation) {
+                    return ControlState::Rewound;
+                }
+            }
             Err(PhotonError::Unsupported(_)) => {
                 self.backend = None;
                 self.paused = false;
@@ -384,7 +409,24 @@ impl ControlCache {
                 "subscription control read failed; keeping the last known state"
             ),
         }
+        self.cached()
+    }
+
+    /// Whether the subscription is paused, after a forced backend read.
+    ///
+    /// Used just before a pass subscribes: a rewind seen here is only recorded, since the new
+    /// stream starts from the stored checkpoint anyway.
+    async fn paused_now(&mut self) -> bool {
+        self.check(true).await;
         self.paused
+    }
+
+    const fn cached(&self) -> ControlState {
+        if self.paused {
+            ControlState::Paused
+        } else {
+            ControlState::Run
+        }
     }
 }
 
@@ -420,11 +462,23 @@ async fn consume_stream(
     let subscription = subscription.as_str();
     let retry = *retry;
     let topic = handler.topic_name;
+    // Re-read control state while the stream is idle too, so a pause or rewind from another
+    // node lands without waiting for the next event.
+    let mut refresh = tokio::time::interval_at(
+        tokio::time::Instant::now() + CONTROL_REFRESH,
+        CONTROL_REFRESH,
+    );
+    refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         tokio::select! {
             biased;
             () = cancel.cancelled() => return PassEnd::Stop,
             () = signal.wake.notified() => return PassEnd::Control,
+            _ = refresh.tick() => match control.check(false).await {
+                ControlState::Run => {}
+                ControlState::Paused => return PassEnd::Control,
+                ControlState::Rewound => return PassEnd::Rewound,
+            },
             event_result = stream.next() => {
                 let Some(event_result) = event_result else {
                     tracing::warn!(topic = topic, subscription = subscription, "subscription stream ended; resubscribing");
@@ -432,10 +486,12 @@ async fn consume_stream(
                 };
                 match event_result {
                     Ok(event) => {
-                        // The event is dropped unhandled; the resubscribe after resume reads
-                        // it again from the checkpoint.
-                        if control.paused(false).await {
-                            return PassEnd::Control;
+                        // The event is dropped unhandled; the resubscribe after resume or a
+                        // rewind reads it again from the checkpoint.
+                        match control.check(false).await {
+                            ControlState::Run => {}
+                            ControlState::Paused => return PassEnd::Control,
+                            ControlState::Rewound => return PassEnd::Rewound,
                         }
                         let permit = match services.worker_pool.acquire().await {
                             Ok(p) => p,
@@ -553,11 +609,23 @@ async fn drain(ctx: &LoopCtx, inflight: &mut JoinSet<()>) {
     }
 }
 
+/// Drop the pass after another node rewound the checkpoint: discard this subscription's pending
+/// commits (they would raise the rewound checkpoint again), let in-flight deliveries finish,
+/// and discard what they recorded too.
+async fn abandon_pass(ctx: &LoopCtx, inflight: &mut JoinSet<()>) {
+    let coalescer = &ctx.services.checkpoint_coalescer;
+    coalescer.discard(&ctx.subscription).await;
+    while inflight.join_next().await.is_some() {}
+    coalescer.discard(&ctx.subscription).await;
+}
+
 /// Run consume passes until shutdown.
 ///
 /// Each pass holds the handler's `run_lock`. Pause/replay/skip wake the loop, which drains and
 /// releases the lock; a paused subscription parks until resumed, re-reading its state every
-/// [`CONTROL_REFRESH`]. `open` builds a stream from the current stored checkpoint.
+/// [`CONTROL_REFRESH`]. A replay or skip on another node shows up as a new rewind generation on
+/// that refresh; the loop then drops the pass without committing and resubscribes. `open` builds
+/// a stream from the current stored checkpoint.
 async fn run_passes<F, Fut>(ctx: LoopCtx, mut control: ControlCache, mut open: F)
 where
     F: FnMut() -> Fut,
@@ -572,7 +640,7 @@ where
             () = ctx.cancel.cancelled() => break,
             guard = ctx.signal.run_lock.lock() => guard,
         };
-        if ctx.signal.held() || control.paused(true).await {
+        if ctx.signal.held() || control.paused_now().await {
             drop(guard);
             if !park(&ctx).await {
                 break;
@@ -588,6 +656,10 @@ where
                 drop(guard);
                 // Let an operation waiting on `run_lock` take it before the next pass.
                 tokio::task::yield_now().await;
+            }
+            PassEnd::Rewound => {
+                abandon_pass(&ctx, &mut inflight).await;
+                drop(guard);
             }
             PassEnd::Reconnect => {
                 drop(guard);
@@ -647,7 +719,11 @@ fn spawn_group_handler_loop(
             subscription: group_id.to_string(),
             retry,
         };
-        let control = ControlCache::new(Some(Arc::clone(photon.backend())), group_id);
+        let control = ControlCache::new(
+            Some(Arc::clone(photon.backend())),
+            group_id,
+            Arc::clone(&ctx.signal),
+        );
         run_passes(ctx, control, || {
             let photon = photon.clone();
             let assigned = assigned.clone();
@@ -691,7 +767,11 @@ fn spawn_handler_loop(
             subscription: subscription_name.to_string(),
             retry,
         };
-        let control = ControlCache::new(Some(Arc::clone(photon.backend())), subscription_name);
+        let control = ControlCache::new(
+            Some(Arc::clone(photon.backend())),
+            subscription_name,
+            Arc::clone(&ctx.signal),
+        );
         run_passes(ctx, control, || {
             let photon = photon.clone();
             async move {
@@ -808,7 +888,7 @@ mod tests {
         async fn run(ctx: &LoopCtx, items: Vec<Result<Event>>) -> (PassEnd, Vec<i64>) {
             let mut inflight = JoinSet::new();
             let mut backoff = Backoff::new(RESUBSCRIBE_BASE, RESUBSCRIBE_MAX);
-            let mut control = ControlCache::new(None, "sub");
+            let mut control = ControlCache::new(None, "sub", Arc::clone(&ctx.signal));
             let end = consume_stream(
                 Box::pin(futures::stream::iter(items)),
                 ctx,
@@ -826,6 +906,45 @@ mod tests {
             let mut got = seen.remove(topic).unwrap_or_default();
             got.sort_unstable();
             (end, got)
+        }
+
+        fn control_cache(port: Arc<dyn StoragePort>, signal: Arc<HandlerSignal>) -> ControlCache {
+            let backend: Arc<dyn PhotonBackend> =
+                Arc::new(photon_backend::GenericPhotonBackend::new(
+                    port,
+                    photon_backend::TopicRegistry::auto_discover(),
+                ));
+            ControlCache::new(Some(backend), "sub", signal)
+        }
+
+        #[tokio::test]
+        async fn control_cache_reports_a_new_rewind_generation_once() {
+            let port: Arc<dyn StoragePort> = Arc::new(InProcStoragePort::new(
+                TransportCrypto::from_bytes(*b"photon-dev-transport-key-32bytes"),
+            ));
+            // A rewind stored before the loop started is absorbed by the first read.
+            port.bump_rewind_generation("sub").await.expect("bump");
+            let mut control = control_cache(Arc::clone(&port), Arc::new(HandlerSignal::default()));
+            assert!(!control.paused_now().await);
+            assert_eq!(control.check(true).await, ControlState::Run);
+
+            port.bump_rewind_generation("sub").await.expect("bump");
+            assert_eq!(control.check(true).await, ControlState::Rewound);
+            assert_eq!(control.check(true).await, ControlState::Run);
+        }
+
+        #[tokio::test]
+        async fn control_cache_ignores_a_rewind_this_node_ran() {
+            let port: Arc<dyn StoragePort> = Arc::new(InProcStoragePort::new(
+                TransportCrypto::from_bytes(*b"photon-dev-transport-key-32bytes"),
+            ));
+            let signal = Arc::new(HandlerSignal::default());
+            let mut control = control_cache(Arc::clone(&port), Arc::clone(&signal));
+            assert!(!control.paused_now().await);
+
+            let generation = port.bump_rewind_generation("sub").await.expect("bump");
+            signal.see_generation(generation);
+            assert_eq!(control.check(true).await, ControlState::Run);
         }
 
         #[tokio::test]

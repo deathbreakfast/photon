@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use futures::stream::Stream;
 use serde_json::Value;
 
-use crate::backend::{BackendCapabilities, PhotonBackend, SubscriptionControl};
+use crate::backend::{BackendCapabilities, PhotonBackend, SubscriptionControl, SubscriptionPause};
 use crate::error::Result;
 use crate::models::Event;
 use crate::registry::TopicRegistry;
@@ -169,20 +169,19 @@ impl PhotonBackend for InstrumentedPhotonBackend {
             .await
     }
 
-    async fn get_subscription_control(
-        &self,
-        subscription: &str,
-    ) -> Result<Option<SubscriptionControl>> {
+    async fn get_subscription_control(&self, subscription: &str) -> Result<SubscriptionControl> {
         self.inner.get_subscription_control(subscription).await
     }
 
-    async fn set_subscription_control(
+    async fn set_subscription_pause(
         &self,
         subscription: &str,
-        control: Option<SubscriptionControl>,
+        pause: Option<SubscriptionPause>,
     ) -> Result<()> {
-        self.inner
-            .set_subscription_control(subscription, control)
-            .await
+        self.inner.set_subscription_pause(subscription, pause).await
+    }
+
+    async fn bump_rewind_generation(&self, subscription: &str) -> Result<u64> {
+        self.inner.bump_rewind_generation(subscription).await
     }
 }

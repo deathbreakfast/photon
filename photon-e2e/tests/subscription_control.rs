@@ -121,6 +121,7 @@ async fn run_all(session: &BootstrapSession) {
 
     pause_and_resume(&photon, &other_node).await;
     replay_from_seq_time_and_event(&photon).await;
+    remote_replay(&photon, &other_node).await;
     skip_to_latest(&photon).await;
     redeliver_one(&photon).await;
 
@@ -244,6 +245,41 @@ async fn replay_from_seq_time_and_event(photon: &Photon) {
         missing,
         Err(photon::PhotonError::EventNotFound(_))
     ));
+}
+
+/// A replay run on another node reaches this node's idle loop through the stored rewind
+/// generation: it resubscribes from the rewound checkpoint within the 5 s control refresh,
+/// with no new publish to wake it.
+async fn remote_replay(photon: &Photon, other_node: &Photon) {
+    let before = seen(&REPLAY_SEEN).len();
+    let preview = other_node
+        .replay(REPLAY_KEY, &ReplayFrom::Seq(4), "Ines")
+        .await
+        .expect("remote replay");
+    assert_eq!((preview.from_seq, preview.count), (4, 2));
+    let got = wait_len(&REPLAY_SEEN, before + 2, Duration::from_secs(8)).await;
+    assert_eq!(sorted_tail(&got, before), [4, 5]);
+
+    // Once it has caught up again, this node's commits bring the checkpoint back to the head.
+    let head = photon
+        .head_seq("test.ctl.replay", None)
+        .await
+        .expect("head");
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let checkpoint = photon
+            .get_checkpoint_seq("ctl-replay", "test.ctl.replay", None)
+            .await
+            .expect("checkpoint");
+        if checkpoint == head {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "checkpoint {checkpoint:?} never returned to head {head:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 }
 
 async fn skip_to_latest(photon: &Photon) {

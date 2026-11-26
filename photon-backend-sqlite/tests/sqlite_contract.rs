@@ -443,3 +443,38 @@ async fn sqlite_list_events_pages_with_seq_cursors_both_ways() {
     assert_eq!(seqs(&port, &page(Some(4), None)).await, vec![7, 6, 5]);
     assert_eq!(seqs(&port, &page(Some(2), Some(5))).await, vec![4, 3]);
 }
+
+#[tokio::test]
+async fn sqlite_rewind_generation_survives_pause_and_reopen() {
+    let (port, file) = open_temp_port().await;
+    assert_eq!(port.bump_rewind_generation("s").await.unwrap(), 1);
+    assert_eq!(port.bump_rewind_generation("s").await.unwrap(), 2);
+    port.set_subscription_pause(
+        "s",
+        Some(photon_backend::SubscriptionPause {
+            by: "Ines".into(),
+            at: chrono::Utc::now(),
+        }),
+    )
+    .await
+    .unwrap();
+    let control = port.get_subscription_control("s").await.unwrap();
+    assert_eq!(control.pause.map(|p| p.by).as_deref(), Some("Ines"));
+    assert_eq!(control.rewind_generation, 2);
+    port.set_subscription_pause("s", None).await.unwrap();
+    drop(port);
+
+    let path = file.path().to_string_lossy().into_owned();
+    let reopened = SqliteStoragePort::open(&path).await.unwrap();
+    let control = reopened.get_subscription_control("s").await.unwrap();
+    assert_eq!(control.pause, None);
+    assert_eq!(control.rewind_generation, 2);
+    assert_eq!(
+        reopened
+            .get_subscription_control("other")
+            .await
+            .unwrap()
+            .rewind_generation,
+        0
+    );
+}

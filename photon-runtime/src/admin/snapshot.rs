@@ -76,10 +76,7 @@ async fn collect_handlers(photon: &Photon) -> photon_backend::Result<Vec<AdminHa
             .get_subscription_control(subscription_of(handler))
             .await
         {
-            Ok(control) => control.map(|c| AdminPaused {
-                by: c.paused_by,
-                at: c.paused_at,
-            }),
+            Ok(control) => control.pause.map(|p| AdminPaused { by: p.by, at: p.at }),
             Err(PhotonError::Unsupported(_)) => None,
             Err(e) => return Err(e),
         };

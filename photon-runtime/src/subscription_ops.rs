@@ -9,7 +9,7 @@ use photon_backend::executor_services::HandlerSignal;
 use photon_backend::instrumentation::log_subscription_op;
 use photon_backend::{
     sanitize_error_message, shard_storage_key, HandlerDescriptor, HandlerRegistry, PhotonError,
-    Result, SubscriptionControl,
+    Result, SubscriptionPause,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -101,6 +101,27 @@ async fn park_loop(signal: &HandlerSignal) -> tokio::sync::MutexGuard<'_, ()> {
     }
 }
 
+/// Bump the stored rewind generation so loops on other nodes drop their stream, discard
+/// pending commits and resubscribe on their next control refresh.
+///
+/// Call with the local loop parked. Records the new generation on this node first, so the
+/// local loop does not treat the rewind as a remote one. Backends without subscription control
+/// have no other nodes to tell.
+async fn announce_rewind(
+    photon: &Photon,
+    subscription: &str,
+    signal: &HandlerSignal,
+) -> Result<()> {
+    match photon.backend().bump_rewind_generation(subscription).await {
+        Ok(generation) => {
+            signal.see_generation(generation);
+            Ok(())
+        }
+        Err(PhotonError::Unsupported(_)) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
 fn release_loop(signal: &HandlerSignal, guard: tokio::sync::MutexGuard<'_, ()>) {
     signal.set_held(false);
     drop(guard);
@@ -146,12 +167,12 @@ impl Photon {
     pub async fn pause(&self, registry_key: &str, by: &str) -> Result<()> {
         let handler = handler_for(registry_key)?;
         let subscription = subscription_of(handler);
-        let control = SubscriptionControl {
-            paused_by: by.to_string(),
-            paused_at: Utc::now(),
+        let pause = SubscriptionPause {
+            by: by.to_string(),
+            at: Utc::now(),
         };
         self.backend()
-            .set_subscription_control(subscription, Some(control))
+            .set_subscription_pause(subscription, Some(pause))
             .await?;
         self.signal(registry_key).wake.notify_one();
         log_subscription_op("pause", registry_key, subscription, by, &json!({}));
@@ -167,7 +188,7 @@ impl Photon {
         let handler = handler_for(registry_key)?;
         let subscription = subscription_of(handler);
         self.backend()
-            .set_subscription_control(subscription, None)
+            .set_subscription_pause(subscription, None)
             .await?;
         self.signal(registry_key).wake.notify_one();
         log_subscription_op("resume", registry_key, subscription, by, &json!({}));
@@ -203,8 +224,10 @@ impl Photon {
     ///
     /// Parks this node's loop for the handler (in-flight deliveries finish and checkpoint
     /// first), rewinds every partition's checkpoint to one before its start, then lets the loop
-    /// resubscribe. Loops on other nodes pick the rewind up on their next resubscribe. Returns
-    /// the preview it acted on.
+    /// resubscribe. Loops on other nodes sharing the store see the rewind within the 5 s control
+    /// refresh: they drop their stream, discard their pending checkpoint commits and resubscribe
+    /// from the rewound checkpoint. A commit flushed on another node before it sees the rewind
+    /// can still raise the checkpoint. Returns the preview it acted on.
     ///
     /// # Errors
     ///
@@ -227,8 +250,10 @@ impl Photon {
                 .flush()
                 .await?;
             let plans = self.replay_plan(handler, from).await?;
+            let mut moved = false;
             for plan in &plans {
                 if plan.target() < plan.checkpoint {
+                    moved = true;
                     self.backend()
                         .reset_checkpoint(
                             subscription,
@@ -238,6 +263,9 @@ impl Photon {
                         )
                         .await?;
                 }
+            }
+            if moved {
+                announce_rewind(self, subscription, &signal).await?;
             }
             Ok(preview_of(&plans))
         }
@@ -260,6 +288,9 @@ impl Photon {
     }
 
     /// Move the handler's checkpoint to the newest event, skipping everything unhandled.
+    ///
+    /// Loops on other nodes sharing the store resubscribe from the new checkpoint within the
+    /// 5 s control refresh, as for [`Self::replay`].
     ///
     /// Returns how many events were skipped.
     ///
@@ -292,6 +323,9 @@ impl Photon {
                         .await?;
                     skipped += non_negative(head - checkpoint);
                 }
+            }
+            if skipped > 0 {
+                announce_rewind(self, subscription, &signal).await?;
             }
             Ok(skipped)
         }
